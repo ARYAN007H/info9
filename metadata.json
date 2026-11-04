@@ -1,0 +1,10 @@
+{
+  "name": "Argon OSINT — Investigative Intelligence & Verification Workbench",
+  "description": "All-in-one open-source intelligence (OSINT) and verification suite featuring a public-record dossier builder, multimodal photo/video geolocation copilot with Google Maps and solar chronolocation, corporate ownership shell mapper, narrative tracker, defensive phishing infrastructure clusterer, sanctions/PEP false-positive reducer, video verification workstation, and auditable source ledger agent.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
