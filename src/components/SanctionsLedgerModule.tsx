@@ -168,7 +168,6 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
       <OfacLiveScreening />
 
       <Panel
-        tag={MODULE_CATALOG.sanctions.num}
         title={`${MODULE_CATALOG.sanctions.name} screening — sample dataset`}
         description={`${MODULE_CATALOG.sanctions.job} The bundled candidate list is a small synthetic demonstration set (5 fictional records), so the matcher can be exercised end-to-end — it is not the OFAC / EU / UN / UK lists.`}
         actions={

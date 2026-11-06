@@ -243,7 +243,7 @@ export function App() {
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <CaseSpine
           activeCase={workspaceCase}
           activeModule={activeModule}
