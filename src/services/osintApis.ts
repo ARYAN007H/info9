@@ -15,11 +15,38 @@ import type {
 } from '../types/osint';
 import { makeLiveProvenance } from '../utils/provenance';
 import { computeDomainRiskScore } from '../utils/riskScore';
+import { INFO9_USER_AGENT } from '../connectors/types';
 import {
   buildOverpassIntersectionQuery,
   haversineDistanceKm,
   projectBearingCoordinate,
 } from '../utils/solarMath';
+
+/**
+ * Fetch an upstream that browsers can only reach through the local proxy
+ * (CORS / User-Agent policy). In the browser this tries the proxy first and
+ * falls back to a direct call; in Node (CLI) there is no CORS, so it goes
+ * straight to the absolute upstream URL with a descriptive User-Agent.
+ */
+async function proxyAwareFetch(
+  pathAndQuery: string,
+  absoluteUrl: string,
+  init?: RequestInit
+): Promise<Response> {
+  if (typeof window === 'undefined') {
+    return fetch(absoluteUrl, {
+      ...init,
+      headers: { 'User-Agent': INFO9_USER_AGENT, ...(init?.headers ?? {}) },
+    });
+  }
+  try {
+    const viaProxy = await fetch(pathAndQuery, init);
+    if (viaProxy.ok) return viaProxy;
+  } catch {
+    // Proxy unreachable — fall through to the direct browser call.
+  }
+  return fetch(absoluteUrl, init);
+}
 
 /**
  * 1. Nominatim OpenStreetMap Forward Geocoding (Zero API Key)
@@ -528,14 +555,11 @@ export async function scanDomainInfrastructureLive(
   let registrar: string | null = null;
   let createdAt: string | null = null;
   try {
-    const rdapRes = await fetch(
-      `/api/osint/rdap?domain=${encodeURIComponent(domain)}`
+    const rdapRes = await proxyAwareFetch(
+      `/api/osint/rdap?domain=${encodeURIComponent(domain)}`,
+      `https://rdap.org/domain/${encodeURIComponent(domain)}`
     );
-    const rdapData = rdapRes.ok
-      ? await rdapRes.json()
-      : await fetch(`https://rdap.org/domain/${encodeURIComponent(domain)}`).then(
-          (r) => (r.ok ? r.json() : null)
-        );
+    const rdapData = rdapRes.ok ? await rdapRes.json() : null;
     if (rdapData) {
       const events = Array.isArray(rdapData.events) ? rdapData.events : [];
       const regEvent = events.find(
@@ -569,8 +593,9 @@ export async function scanDomainInfrastructureLive(
   let tlsIssuer: string | null = null;
   const ctSubdomains = new Set<string>();
   try {
-    const crtRes = await fetch(
-      `/api/osint/crt?domain=${encodeURIComponent(domain)}`
+    const crtRes = await proxyAwareFetch(
+      `/api/osint/crt?domain=${encodeURIComponent(domain)}`,
+      `https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`
     );
     if (crtRes.ok) {
       const crtData = await crtRes.json();

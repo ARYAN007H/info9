@@ -83,6 +83,21 @@ docker compose up --build -d   # → http://localhost:3000
 | `npm test` | Unit tests (Node's built-in test runner) |
 | `npm run typecheck` | Strict type gate (same one CI runs) |
 
+## Headless CLI (same core, zero keys)
+
+The analysis core is shared between the web UI and a headless CLI — same connectors, same rate limiting, same provenance:
+
+```bash
+npm run cli -- connectors              # list the zero-key connector registry
+npm run cli -- recon example.com       # full passive domain recon + transparent risk
+npm run cli -- geocode "Tower Bridge London"
+npm run cli -- landmarks 35.68214,139.76308
+npm run cli -- entity "Siemens AG"     # GLEIF + registry pivots
+npm run cli -- screen "Viktor Morozov" 1968-04-14   # demo sanctions scoring (synthetic set)
+```
+
+Every connector declares its input/output entity kinds in a registry (`src/connectors/`), so pivots are suggested automatically — the Maltego transform-graph idea, built entirely on free public sources. Client-side per-host rate limiting and a TTL cache keep reruns inside upstream usage policies.
+
 ## Data source policy
 
 Every upstream in the five modules is a **free, public, documented endpoint**. info9 never proxies your queries through its own aggregation backend and never requires registration. Where a browser cannot call an upstream directly (CORS or User-Agent policy), the bundled Express server forwards the request transparently and adds nothing else. Sources currently integrated:
@@ -104,11 +119,12 @@ Phase 1 — **evidentiary integrity**
 - [ ] Remove every silent fallback so missing data is rendered as "no data", never plausible fiction
 - [ ] Transparent, documented risk-scoring methodology
 
-Phase 2 — **connector architecture**
+Phase 2 — **connector architecture** *(in progress — core shipped)*
 
-- [ ] One-file-per-source connector SDK: each connector declares inputs, outputs and pivot targets
-- [ ] Headless CLI (`npx info9 recon example.com`) sharing the exact core
-- [ ] Server-side cache + per-source rate limiting and backoff
+- [x] Connector registry: one entry per source, declaring inputs/outputs so pivots auto-suggest
+- [x] Headless CLI sharing the exact core (`npm run cli -- recon example.com`)
+- [x] Per-host rate limiting + TTL response cache honoring upstream policies
+- [ ] STIX 2.1 as canonical internal entity model across all connectors
 
 Phase 3 — **source breadth** (all free)
 
