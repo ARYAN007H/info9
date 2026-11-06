@@ -116,16 +116,29 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
     );
     try {
       const result = await expandGleifParentTransform(ent);
-      if (result) {
+      if (result.found) {
         onAddEntity(result.discoveredEntity);
         onAddOwnershipEdge(result.discoveredEdge);
         onSelectEntity(result.discoveredEntity);
         setStatusMessage(
           `Found parent entity "${result.discoveredEntity.label}" (${result.discoveredEntity.jurisdiction}) and added ownership link.`
         );
+      } else {
+        const reasonText: Record<typeof result.reason, string> = {
+          NOT_A_GLEIF_ENTITY: 'the saved entity has no GLEIF identifier',
+          NO_PARENT_ON_RECORD:
+            'GLEIF records no Level-2 ultimate parent (standalone entity or reporting exception)',
+          GLEIF_UNAVAILABLE: 'the GLEIF registry is unreachable right now',
+          GLEIF_ERROR: 'the GLEIF registry returned an error',
+        };
+        setStatusMessage(
+          `No parent discovered — ${reasonText[result.reason]}. info9 does not invent placeholder owners.`
+        );
       }
-    } catch {
-      setStatusMessage('Completed parent company lookup.');
+    } catch (err) {
+      setStatusMessage(
+        `Parent lookup failed: ${err instanceof Error ? err.message : 'network error'}`
+      );
     } finally {
       setIsRunningTransform(false);
     }

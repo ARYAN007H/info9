@@ -18,16 +18,9 @@ export const DEFAULT_WORKSPACE_CASE: InvestigationCase = {
     shadowLengthMeters: 8.5,
     measuredShadowAzimuthDeg: 42.0,
     landmarks: [],
-    weatherVerification: {
-      elevationMeters: 14,
-      date: '2026-06-18',
-      maxTempC: 22.0,
-      minTempC: 13.5,
-      cloudCoverMeanPercent: 18,
-      shortwaveRadiationSum: 24.2,
-      precipitationMm: 0.0,
-      shadowPlausibility: 'CONFIRMED_CLEAR_SKY',
-    },
+    // Evidentiary integrity: weather starts as an explicit gap. It is only
+    // populated after a live Open-Meteo query in the Geolocation module.
+    weatherVerification: null,
   },
   entities: [],
   ownershipEdges: [],

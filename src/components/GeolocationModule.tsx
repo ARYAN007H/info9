@@ -585,21 +585,30 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     setIsQueryingWeather(true);
     setStatusMessage('Checking historical weather and terrain elevation...');
     try {
-      const weatherVerification: WeatherVerificationData =
-        await fetchElevationAndWeatherVerification(
-          geoState.lat,
-          geoState.lon,
-          geoState.dateIso
+      const weatherVerification = await fetchElevationAndWeatherVerification(
+        geoState.lat,
+        geoState.lon,
+        geoState.dateIso
+      );
+      if (weatherVerification === null) {
+        setStatusMessage(
+          'Open-Meteo is unreachable or has no data for that date — no weather data was recorded (info9 never fills gaps with estimates).'
         );
+        return;
+      }
       onUpdateGeoState((prev) => ({
         ...prev,
         weatherVerification,
       }));
       setStatusMessage(
-        `Verified elevation (${weatherVerification.elevationMeters}m ASL) and ${weatherVerification.cloudCoverMeanPercent}% cloud cover on ${geoState.dateIso}.`
+        `Verified elevation (${
+          weatherVerification.elevationMeters ?? 'unknown'
+        }m ASL) and ${weatherVerification.cloudCoverMeanPercent}% cloud cover on ${geoState.dateIso}.`
       );
     } catch {
-      setStatusMessage('Updated terrain and weather estimate.');
+      setStatusMessage(
+        'Weather verification failed — no data recorded rather than a fabricated estimate.'
+      );
     } finally {
       setIsQueryingWeather(false);
     }
@@ -608,10 +617,13 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   const handleSaveFinding = () => {
     const topMatch = chronoSolution.bestMatches[0];
     const timeNote = topMatch ? ` · Estimated Solar Time: ${topMatch.utcTimeFormatted}` : '';
+    const elevationNote = geoState.weatherVerification?.elevationMeters != null
+      ? ` Elevation: ${geoState.weatherVerification.elevationMeters}m ASL.`
+      : '';
     onAppendLedger({
       module: 'geolocation',
       targetLabel: `${geoState.locationLabel} (${geoState.lat}, ${geoState.lon})`,
-      findingSummary: `Geolocated pin at ${geoState.lat}, ${geoState.lon} (${geoState.locationLabel}). Elevation: ${geoState.weatherVerification.elevationMeters}m ASL${timeNote}.`,
+      findingSummary: `Geolocated pin at ${geoState.lat}, ${geoState.lon} (${geoState.locationLabel}).${elevationNote}${timeNote}`,
       sourceUrl: 'https://www.openstreetmap.org',
     });
     setStatusMessage('Saved geolocation finding to your Watchlist & Notes report.');
@@ -830,7 +842,10 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               </div>
               <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 Lat: {geoState.lat.toFixed(5)}° · Lon: {geoState.lon.toFixed(5)}° ·
-                Elevation: {geoState.weatherVerification.elevationMeters}m
+                Elevation:{' '}
+                {geoState.weatherVerification?.elevationMeters != null
+                  ? `${geoState.weatherVerification.elevationMeters}m`
+                  : 'not verified'}
               </div>
             </div>
 
@@ -1179,15 +1194,22 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
 
                 {/* Historical Weather Verification */}
                 <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between gap-2">
-                  <div className="text-xs">
+                  <div className="text-xs min-w-0">
                     <div className="font-semibold text-slate-800 dark:text-slate-200">
                       Weather on {geoState.dateIso}
                     </div>
-                    <div className="text-[11px] text-slate-500 font-mono tabular-nums">
-                      Temp: {geoState.weatherVerification.minTempC}°C –{' '}
-                      {geoState.weatherVerification.maxTempC}°C · Cloud Cover:{' '}
-                      {geoState.weatherVerification.cloudCoverMeanPercent}%
-                    </div>
+                    {geoState.weatherVerification ? (
+                      <div className="text-[11px] text-slate-500 font-mono tabular-nums">
+                        Temp: {geoState.weatherVerification.minTempC}°C –{' '}
+                        {geoState.weatherVerification.maxTempC}°C · Cloud Cover:{' '}
+                        {geoState.weatherVerification.cloudCoverMeanPercent}%
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                        No data recorded — run a live check (info9 shows gaps, not
+                        guesses)
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"

@@ -16,6 +16,38 @@ export type EntityType =
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
+/**
+ * Evidentiary provenance attached to intelligence values.
+ * See src/utils/provenance.ts for constructor helpers and the contract.
+ * - LIVE: returned by the named upstream for this exact query.
+ * - DERIVED: computed locally from LIVE inputs.
+ * - UNAVAILABLE: upstream failed or was never queried — no value may be
+ *   substituted, and the UI must render an explicit gap.
+ */
+export type ProvenanceStatus = 'LIVE' | 'DERIVED' | 'UNAVAILABLE';
+
+export interface ProvenanceMeta {
+  status: ProvenanceStatus;
+  source: string;
+  fetchedAtUtc: string;
+  note?: string;
+}
+
+/** One transparent, auditable contribution to a heuristic score. */
+export interface RiskFactor {
+  label: string;
+  points: number;
+}
+
+/**
+ * A heuristic score whose every contributing factor is disclosed.
+ * Computed by src/utils/riskScore.ts — a triage aid, not a verdict.
+ */
+export interface DomainRiskAssessment {
+  score: number;
+  factors: RiskFactor[];
+}
+
 export interface OsintEntity {
   id: string;
   label: string;
@@ -38,6 +70,27 @@ export interface OwnershipEdge {
   isCircular?: boolean;
   verifiedSource: string;
 }
+
+/**
+ * Result of a GLEIF Level-2 parent transform. When no parent is found, the
+ * tool says so — it NEVER invents a placeholder entity.
+ */
+export type GleifParentTransformResult =
+  | {
+      found: true;
+      discoveredEntity: OsintEntity;
+      discoveredEdge: OwnershipEdge;
+      provenance: ProvenanceMeta;
+    }
+  | {
+      found: false;
+      reason:
+        | 'NOT_A_GLEIF_ENTITY'
+        | 'NO_PARENT_ON_RECORD'
+        | 'GLEIF_UNAVAILABLE'
+        | 'GLEIF_ERROR';
+      detail: string;
+    };
 
 export interface OverpassLandmark {
   id: string;
@@ -73,7 +126,8 @@ export interface DemRadialPoint {
 }
 
 export interface WeatherVerificationData {
-  elevationMeters: number;
+  /** null when the Open-Meteo elevation endpoint failed — never a guess. */
+  elevationMeters: number | null;
   date: string;
   maxTempC: number;
   minTempC: number;
@@ -84,6 +138,7 @@ export interface WeatherVerificationData {
     | 'CONFIRMED_CLEAR_SKY'
     | 'PARTIAL_CLOUD_COVER'
     | 'OVERCAST_ANOMALY';
+  provenance: ProvenanceMeta;
 }
 
 export interface ShodanInternetDbData {
@@ -125,17 +180,26 @@ export interface InfraDomainRecord {
   mxRecords: string[];
   nsRecords: string[];
   txtRecords: string[];
-  dmarcPolicy?: string;
+  /** null = no DMARC record found (spoofing possible) or lookup failed. */
+  dmarcPolicy: string | null;
   caaRecords?: string[];
-  asn: string;
-  asnOrg: string;
+  /** null when neither ipwho.is nor RIPEstat could attribute the IP. */
+  asn: string | null;
+  asnOrg: string | null;
   ipCountry: string;
-  registrar: string;
-  createdAt: string;
-  tlsIssuer: string;
+  /** null when RDAP did not return the registrar — never a placeholder. */
+  registrar: string | null;
+  /** null when RDAP did not return a registration event. */
+  createdAt: string | null;
+  /** null when crt.sh returned nothing usable. */
+  tlsIssuer: string | null;
   ctSubdomainsCount: number;
   ctSubdomainsSample: string[];
-  riskScore: number;
+  /** Named list of upstreams that failed or were unavailable during the scan. */
+  dataGaps: string[];
+  /** Transparent heuristic with all factors disclosed. */
+  riskAssessment: DomainRiskAssessment;
+  provenance: ProvenanceMeta;
   shodanData?: ShodanInternetDbData;
   ripeBgpData?: RipeBgpOverviewData;
 }
@@ -241,7 +305,8 @@ export interface InvestigationCase {
     shadowLengthMeters: number;
     measuredShadowAzimuthDeg: number;
     landmarks: OverpassLandmark[];
-    weatherVerification: WeatherVerificationData;
+    /** null = never queried or upstream unavailable. Never pre-filled with guesses. */
+    weatherVerification: WeatherVerificationData | null;
   };
   entities: OsintEntity[];
   ownershipEdges: OwnershipEdge[];

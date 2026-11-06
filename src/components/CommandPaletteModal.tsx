@@ -49,8 +49,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   const matchingDomains = activeCase.infraRecords.filter(
     (d) =>
       d.domain.toLowerCase().includes(q) ||
-      d.asn.toLowerCase().includes(q) ||
-      d.asnOrg.toLowerCase().includes(q)
+      (d.asn ?? '').toLowerCase().includes(q) ||
+      (d.asnOrg ?? '').toLowerCase().includes(q)
   );
 
   const coordMatch = query

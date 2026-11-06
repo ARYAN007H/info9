@@ -9,6 +9,7 @@ import {
   Scale,
   ShieldAlert,
   ShieldCheck,
+  TriangleAlert,
 } from 'lucide-react';
 import type {
   InvestigationCase,
@@ -143,6 +144,18 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
               lists (automatically filtering out false positives with different
               birth years or countries), and export your saved findings.
             </p>
+            <div className="mt-2 flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-[11px] text-amber-700 dark:text-amber-300">
+              <TriangleAlert className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                <strong>Sample dataset notice:</strong> the bundled candidate
+                list is a small <em>synthetic demonstration set</em> (5 fictional
+                records with fabricated reference IDs) so the scoring engine can
+                be exercised end-to-end. It is <strong>not</strong> the OFAC /
+                EU / UN / UK lists. A live OpenSanctions connector is on the
+                roadmap (Phase 3) — until then, screening results are for
+                evaluating the matcher only.
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">

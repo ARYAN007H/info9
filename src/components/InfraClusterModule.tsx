@@ -10,12 +10,14 @@ import {
   Radar,
   Server,
   Sparkles,
+  TriangleAlert,
 } from 'lucide-react';
 import type {
   DnsTwistPermutation,
   InfraDomainRecord,
   InvestigationCase,
 } from '../types/osint';
+import ProvenanceBadge from './ProvenanceBadge';
 import {
   clusterInfrastructureDomains,
   generateDnsTwistPermutations,
@@ -82,7 +84,7 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
       setSelectedDomainId(record.id);
       setDomainInput('');
       setStatusMessage(
-        `Scan complete for ${record.domain}: Hosted at ${record.aRecords[0] || '—'} (${record.asnOrg}), ${record.shodanData?.ports.length ?? 0} open ports, ${record.ctSubdomainsCount} subdomains found.`
+        `Scan complete for ${record.domain}: Hosted at ${record.aRecords[0] || '—'} (${record.asnOrg ?? 'network unknown'}), ${record.shodanData ? `${record.shodanData.ports.length} open ports` : 'exposure data unavailable'}, ${record.ctSubdomainsCount} subdomains found${record.dataGaps.length > 0 ? ` · ${record.dataGaps.length} data gap(s) flagged` : ''}.`
       );
     } catch (err) {
       setStatusMessage(
@@ -120,11 +122,17 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
 
   const handleSaveScanToNotes = () => {
     if (!selectedRecord) return;
-    const ports = selectedRecord.shodanData?.ports.join(', ') || 'None';
+    const ports = selectedRecord.shodanData
+      ? selectedRecord.shodanData.ports.join(', ')
+      : 'unavailable';
     onAppendLedger({
       module: 'infra',
       targetLabel: `${selectedRecord.domain} (${selectedRecord.aRecords[0] || ''})`,
-      findingSummary: `Website & IP Scan: IP=${selectedRecord.aRecords.join(', ')}, Host=${selectedRecord.asnOrg} (${selectedRecord.asn}), Open Ports=[${ports}], Subdomains=${selectedRecord.ctSubdomainsCount}.`,
+      findingSummary: `Website & IP Scan: IP=${selectedRecord.aRecords.join(', ')}, Host=${selectedRecord.asnOrg ?? 'unknown'} (${selectedRecord.asn ?? 'unknown'}), Open Ports=[${ports}], Subdomains=${selectedRecord.ctSubdomainsCount}.${
+        selectedRecord.dataGaps.length > 0
+          ? ` Data gaps: ${selectedRecord.dataGaps.join('; ')}.`
+          : ''
+      }`,
       sourceUrl: `https://internetdb.shodan.io/${encodeURIComponent(
         selectedRecord.aRecords[0] || ''
       )}`,
@@ -268,7 +276,7 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                 {selectedRecord.aRecords[0] || '—'} ({selectedRecord.ipCountry})
               </div>
               <div className="text-xs text-slate-500 truncate mt-0.5">
-                Prefix: {selectedRecord.ripeBgpData?.announcedPrefix || 'BGP /24'}
+                Prefix: {selectedRecord.ripeBgpData?.announcedPrefix || 'BGP data unavailable'}
               </div>
             </div>
 
@@ -277,10 +285,10 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                 Hosting Network (ASN)
               </div>
               <div className="text-base font-bold text-sky-600 dark:text-sky-400 font-mono tabular-nums mt-1 truncate">
-                {selectedRecord.asn}
+                {selectedRecord.asn ?? '—'}
               </div>
               <div className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
-                {selectedRecord.asnOrg}
+                {selectedRecord.asnOrg ?? 'Network attribution unavailable'}
               </div>
             </div>
 
@@ -289,10 +297,10 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                 Domain Registration
               </div>
               <div className="text-base font-bold text-slate-900 dark:text-slate-100 font-mono tabular-nums mt-1">
-                {selectedRecord.createdAt}
+                {selectedRecord.createdAt ?? 'unavailable'}
               </div>
               <div className="text-xs text-slate-500 truncate mt-0.5">
-                Registrar: {selectedRecord.registrar}
+                Registrar: {selectedRecord.registrar ?? 'unavailable'}
               </div>
             </div>
 
@@ -301,11 +309,16 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                 Shodan Open Ports &amp; CVEs
               </div>
               <div className="text-base font-bold text-slate-900 dark:text-slate-100 font-mono tabular-nums mt-1">
-                {selectedRecord.shodanData?.ports.length ?? 0} Open Ports
+                {selectedRecord.shodanData
+                  ? `${selectedRecord.shodanData.ports.length} Open Ports`
+                  : 'N/A'}
               </div>
               <div className="text-xs font-mono mt-0.5">
-                {selectedRecord.shodanData?.vulns &&
-                selectedRecord.shodanData.vulns.length > 0 ? (
+                {!selectedRecord.shodanData ? (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    Exposure data unavailable
+                  </span>
+                ) : selectedRecord.shodanData.vulns.length > 0 ? (
                   <span className="text-rose-600 dark:text-rose-400 font-semibold">
                     {selectedRecord.shodanData.vulns.length} CVEs Detected
                   </span>
@@ -314,6 +327,65 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                     0 Known CVEs Flagged
                   </span>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Provenance, Data Gaps & Transparent Risk Assessment */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <ProvenanceBadge meta={selectedRecord.provenance} />
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                Scanned {selectedRecord.provenance.fetchedAtUtc.slice(0, 10)}
+              </span>
+            </div>
+            {selectedRecord.dataGaps.length > 0 && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Data Gaps ({selectedRecord.dataGaps.length}) — shown as gaps,
+                    never filled with estimates
+                  </span>
+                </div>
+                <ul className="text-[11px] text-amber-700/90 dark:text-amber-400/90 font-mono list-disc list-inside">
+                  {selectedRecord.dataGaps.map((gap) => (
+                    <li key={gap}>{gap}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Heuristic Risk Score
+                </span>
+                <span className="text-base font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                  {selectedRecord.riskAssessment.score}/100
+                </span>
+              </div>
+              {selectedRecord.riskAssessment.factors.length > 0 ? (
+                <ul className="mt-1.5 space-y-0.5">
+                  {selectedRecord.riskAssessment.factors.map((f) => (
+                    <li
+                      key={f.label}
+                      className="flex items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-slate-400"
+                    >
+                      <span>{f.label}</span>
+                      <span className="font-mono font-semibold shrink-0">
+                        +{f.points}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                  No risk factors triggered by the documented rule table.
+                </div>
+              )}
+              <div className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                Transparent additive heuristic (see src/utils/riskScore.ts) — a
+                triage aid, not a verdict.
               </div>
             </div>
           </div>
@@ -337,7 +409,9 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                 </div>
                 <div className="font-mono text-sky-600 dark:text-sky-400 font-semibold">
                   Ports:{' '}
-                  {selectedRecord.shodanData?.ports.join(', ') || '80, 443'}
+                  {selectedRecord.shodanData
+                    ? selectedRecord.shodanData.ports.join(', ') || 'none observed'
+                    : 'unavailable (Shodan data gap)'}
                 </div>
                 {selectedRecord.shodanData?.cpes &&
                   selectedRecord.shodanData.cpes.length > 0 && (
@@ -380,7 +454,7 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
                     </span>
                   </span>
                   <span className="text-[11px] font-mono text-slate-500">
-                    SSL: {selectedRecord.tlsIssuer}
+                    SSL: {selectedRecord.tlsIssuer ?? 'unavailable'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-sky-600 dark:text-sky-400 pt-1">

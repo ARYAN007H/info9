@@ -150,7 +150,11 @@ export function App() {
       '',
       `## 1. Pinned Map Location`,
       `- **Location:** ${workspaceCase.geoState.locationLabel} (${workspaceCase.geoState.lat}, ${workspaceCase.geoState.lon})`,
-      `- **Date & Elevation:** ${workspaceCase.geoState.dateIso} · ${workspaceCase.geoState.weatherVerification.elevationMeters}m ASL`,
+      `- **Date & Elevation:** ${workspaceCase.geoState.dateIso} · ${
+        workspaceCase.geoState.weatherVerification?.elevationMeters != null
+          ? `${workspaceCase.geoState.weatherVerification.elevationMeters}m ASL`
+          : 'elevation not verified (no weather data recorded)'
+      }`,
       '',
       `## 2. Saved People & Companies (${workspaceCase.entities.length})`,
       ...(workspaceCase.entities.length === 0
@@ -165,7 +169,9 @@ export function App() {
         ? ['- None scanned yet']
         : workspaceCase.infraRecords.map(
             (d) =>
-              `- **${d.domain}** · IP: ${d.aRecords.join(', ')} · Host: ${d.asn} (${d.asnOrg}) · SSL: ${d.tlsIssuer}`
+              `- **${d.domain}** · IP: ${d.aRecords.join(', ') || 'none'} · Host: ${d.asn ?? 'unknown'} (${d.asnOrg ?? 'unknown'}) · SSL: ${d.tlsIssuer ?? 'unknown'}${
+                d.dataGaps.length > 0 ? ` · Data gaps: ${d.dataGaps.join('; ')}` : ''
+              }`
           )),
       '',
       `## 4. Saved Investigation Notes (${workspaceCase.evidenceLedger.length})`,

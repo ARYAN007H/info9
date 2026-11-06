@@ -557,7 +557,7 @@ export function clusterInfrastructureDomains(
 
       if (seed.asn && seed.asn === other.asn) {
         score += 0.45;
-        signals.push(`Shared BGP ASN (${seed.asn} · ${seed.asnOrg})`);
+        signals.push(`Shared BGP ASN (${seed.asn} · ${seed.asnOrg ?? 'unknown org'})`);
       }
 
       const commonNs = seed.nsRecords.filter((ns) =>
@@ -597,7 +597,7 @@ export function clusterInfrastructureDomains(
           )
         : 100;
 
-    const maxRisk = Math.max(...group.map((g) => g.riskScore));
+    const maxRisk = Math.max(...group.map((g) => g.riskAssessment.score));
     const severity: InfraThreatCluster['severity'] =
       maxRisk >= 85
         ? 'critical'
@@ -608,14 +608,18 @@ export function clusterInfrastructureDomains(
         : 'low';
 
     if (sharedSignalsSet.size === 0) {
-      sharedSignalsSet.add(`Standalone Infrastructure Node (${seed.asn})`);
+      sharedSignalsSet.add(
+        `Standalone Infrastructure Node (${seed.asn ?? 'unknown ASN'})`
+      );
     }
 
     clusters.push({
       clusterId: `CL-${String(clusters.length + 1).padStart(2, '0')}`,
       label:
         group.length > 1
-          ? `Coordinated Infrastructure Cluster (${seed.asnOrg || seed.asn})`
+          ? `Coordinated Infrastructure Cluster (${
+              seed.asnOrg ?? seed.asn ?? 'unknown network'
+            })`
           : `Isolated Domain Node (${seed.domain})`,
       domains: group.map((g) => g.domain),
       sharedSignals: Array.from(sharedSignalsSet),
@@ -876,7 +880,7 @@ export function exportStix21Bundle(activeCase: InvestigationCase): string {
       pattern: `[domain-name:value = '${dom.domain}']`,
       pattern_type: 'stix',
       valid_from: now,
-      confidence: dom.riskScore,
+      confidence: dom.riskAssessment.score,
     });
   }
 

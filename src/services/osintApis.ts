@@ -1,6 +1,7 @@
 import type {
   DemRadialPoint,
   DnsTwistPermutation,
+  GleifParentTransformResult,
   InfraDomainRecord,
   OsintEntity,
   OverpassConstraintClause,
@@ -10,6 +11,8 @@ import type {
   ShodanInternetDbData,
   WeatherVerificationData,
 } from '../types/osint';
+import { makeLiveProvenance } from '../utils/provenance';
+import { computeDomainRiskScore } from '../utils/riskScore';
 import {
   buildOverpassIntersectionQuery,
   haversineDistanceKm,
@@ -208,13 +211,20 @@ async function runOverpassRawQuery(
 
 /**
  * 3A. Open-Meteo Terrain Elevation & Historical Weather / Cloud Cover Verification (Zero API Key)
+ *
+ * Evidentiary contract: returns null when the upstream is unreachable or
+ * returns unusable data. Callers must render an explicit gap — this function
+ * NEVER returns placeholder weather.
  */
 export async function fetchElevationAndWeatherVerification(
   lat: number,
   lon: number,
   dateIso: string
-): Promise<WeatherVerificationData> {
-  let elevationMeters = 14;
+): Promise<WeatherVerificationData | null> {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const queryDate = dateIso <= todayIso ? dateIso : todayIso;
+
+  let elevationMeters: number | null = null;
   try {
     const elevRes = await fetch(
       `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`
@@ -222,82 +232,75 @@ export async function fetchElevationAndWeatherVerification(
     if (elevRes.ok) {
       const elevJson = await elevRes.json();
       if (Array.isArray(elevJson?.elevation) && elevJson.elevation.length > 0) {
-        elevationMeters = Math.round(Number(elevJson.elevation[0]));
+        const parsed = Number(elevJson.elevation[0]);
+        if (Number.isFinite(parsed)) elevationMeters = Math.round(parsed);
       }
     }
   } catch {
-    // Keep fallback elevation
+    // Elevation stays null — surfaced as a data gap, never defaulted.
   }
-
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const queryDate = dateIso <= todayIso ? dateIso : '2025-06-15';
 
   try {
     const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${queryDate}&end_date=${queryDate}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,shortwave_radiation_sum&hourly=cloud_cover&timezone=UTC`;
     const wRes = await fetch(weatherUrl);
-    if (wRes.ok) {
-      const wJson = await wRes.json();
-      const maxTempC = Number(wJson?.daily?.temperature_2m_max?.[0] ?? 18.4);
-      const minTempC = Number(wJson?.daily?.temperature_2m_min?.[0] ?? 9.2);
-      const precipitationMm = Number(wJson?.daily?.precipitation_sum?.[0] ?? 0);
-      const shortwaveRadiationSum = Number(
-        wJson?.daily?.shortwave_radiation_sum?.[0] ?? 21.6
-      );
-
-      const hourlyClouds: number[] = Array.isArray(wJson?.hourly?.cloud_cover)
-        ? wJson.hourly.cloud_cover.filter((v: unknown) => typeof v === 'number')
-        : [];
-      const cloudCoverMeanPercent =
-        hourlyClouds.length > 0
-          ? Math.round(
-              hourlyClouds.reduce((a, b) => a + b, 0) / hourlyClouds.length
-            )
-          : 22;
-
-      const shadowPlausibility: WeatherVerificationData['shadowPlausibility'] =
-        cloudCoverMeanPercent <= 45
-          ? 'CONFIRMED_CLEAR_SKY'
-          : cloudCoverMeanPercent <= 78
-          ? 'PARTIAL_CLOUD_COVER'
-          : 'OVERCAST_ANOMALY';
-
-      return {
-        elevationMeters,
-        date: dateIso,
-        maxTempC,
-        minTempC,
-        cloudCoverMeanPercent,
-        shortwaveRadiationSum,
-        precipitationMm,
-        shadowPlausibility,
-      };
+    if (!wRes.ok) return null;
+    const wJson = await wRes.json();
+    const maxTempC = wJson?.daily?.temperature_2m_max?.[0];
+    const minTempC = wJson?.daily?.temperature_2m_min?.[0];
+    const precipitationMm = wJson?.daily?.precipitation_sum?.[0];
+    const shortwaveRadiationSum = wJson?.daily?.shortwave_radiation_sum?.[0];
+    if (
+      typeof maxTempC !== 'number' ||
+      typeof minTempC !== 'number' ||
+      typeof precipitationMm !== 'number' ||
+      typeof shortwaveRadiationSum !== 'number'
+    ) {
+      return null;
     }
-  } catch {
-    // Fallback if offline
-  }
 
-  return {
-    elevationMeters,
-    date: dateIso,
-    maxTempC: 19.2,
-    minTempC: 10.5,
-    cloudCoverMeanPercent: 18,
-    shortwaveRadiationSum: 22.8,
-    precipitationMm: 0.0,
-    shadowPlausibility: 'CONFIRMED_CLEAR_SKY',
-  };
+    const hourlyClouds: number[] = Array.isArray(wJson?.hourly?.cloud_cover)
+      ? wJson.hourly.cloud_cover.filter((v: unknown) => typeof v === 'number')
+      : [];
+    if (hourlyClouds.length === 0) return null;
+    const cloudCoverMeanPercent = Math.round(
+      hourlyClouds.reduce((a, b) => a + b, 0) / hourlyClouds.length
+    );
+
+    const shadowPlausibility: WeatherVerificationData['shadowPlausibility'] =
+      cloudCoverMeanPercent <= 45
+        ? 'CONFIRMED_CLEAR_SKY'
+        : cloudCoverMeanPercent <= 78
+        ? 'PARTIAL_CLOUD_COVER'
+        : 'OVERCAST_ANOMALY';
+
+    return {
+      elevationMeters,
+      date: dateIso,
+      maxTempC,
+      minTempC,
+      cloudCoverMeanPercent,
+      shortwaveRadiationSum,
+      precipitationMm,
+      shadowPlausibility,
+      provenance: makeLiveProvenance('Open-Meteo ERA5 Archive'),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
  * 3B. PeakFinder-Style 8-Radial DEM Terrain Viewshed & Horizon Angle Profiler (Open-Meteo DEM API)
- * Samples terrain elevation at 8 compass bearings (1.5km radius) to compute horizon elevation angles.
+ *
+ * Evidentiary contract: on any upstream failure the profile is empty and
+ * center elevation null. No synthetic terrain is ever produced.
  */
 export async function fetchDemRadialHorizonProfile(
   centerLat: number,
   centerLon: number,
   radiusKm = 1.5
 ): Promise<{
-  centerElevationMeters: number;
+  centerElevationMeters: number | null;
   radials: DemRadialPoint[];
 }> {
   const compassDirs: Array<{ label: string; deg: number }> = [
@@ -325,47 +328,35 @@ export async function fetchDemRadialHorizonProfile(
     const res = await fetch(
       `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`
     );
-    if (res.ok) {
-      const data = await res.json();
-      const elevations: number[] = Array.isArray(data?.elevation)
-        ? data.elevation.map(Number)
-        : [];
-      if (elevations.length === 9) {
-        const centerElev = elevations[0];
-        const distMeters = radiusKm * 1000;
-        const radials: DemRadialPoint[] = compassDirs.map((dir, idx) => {
-          const el = elevations[idx + 1];
-          const deltaH = el - centerElev;
-          const horizonAngleDeg = Number(
-            ((Math.atan2(deltaH, distMeters) * 180) / Math.PI).toFixed(2)
-          );
-          return {
-            compassBearing: dir.label,
-            bearingDeg: dir.deg,
-            lat: coords[idx + 1][0],
-            lon: coords[idx + 1][1],
-            elevationMeters: Math.round(el),
-            horizonAngleDeg,
-          };
-        });
-        return { centerElevationMeters: Math.round(centerElev), radials };
-      }
+    if (!res.ok) return { centerElevationMeters: null, radials: [] };
+    const data = await res.json();
+    const elevations: number[] = Array.isArray(data?.elevation)
+      ? data.elevation.map(Number)
+      : [];
+    if (elevations.length !== 9 || elevations.some((e) => !Number.isFinite(e))) {
+      return { centerElevationMeters: null, radials: [] };
     }
+    const centerElev = elevations[0];
+    const distMeters = radiusKm * 1000;
+    const radials: DemRadialPoint[] = compassDirs.map((dir, idx) => {
+      const el = elevations[idx + 1];
+      const deltaH = el - centerElev;
+      const horizonAngleDeg = Number(
+        ((Math.atan2(deltaH, distMeters) * 180) / Math.PI).toFixed(2)
+      );
+      return {
+        compassBearing: dir.label,
+        bearingDeg: dir.deg,
+        lat: coords[idx + 1][0],
+        lon: coords[idx + 1][1],
+        elevationMeters: Math.round(el),
+        horizonAngleDeg,
+      };
+    });
+    return { centerElevationMeters: Math.round(centerElev), radials };
   } catch {
-    // Fallback deterministic coastal/hill profile
+    return { centerElevationMeters: null, radials: [] };
   }
-
-  return {
-    centerElevationMeters: 8,
-    radials: compassDirs.map((dir, idx) => ({
-      compassBearing: dir.label,
-      bearingDeg: dir.deg,
-      lat: coords[idx + 1][0],
-      lon: coords[idx + 1][1],
-      elevationMeters: [12, 19, 24, 15, 4, 2, 3, 9][idx],
-      horizonAngleDeg: [0.15, 0.42, 0.61, 0.27, -0.15, -0.23, -0.19, 0.04][idx],
-    })),
-  };
 }
 
 /**
@@ -459,6 +450,13 @@ export async function queryRipeBgpOverview(
   return undefined;
 }
 
+/**
+ * Full passive recon on a domain. Evidentiary contract:
+ *  - Throws when the domain resolves no DNS records at all (probably nonexistent).
+ *  - Every field that could not be verified is null and is named in `dataGaps`.
+ *  - No placeholder IP, registrar, date, port list, or vulnerability set is
+ *    ever substituted for a failed lookup.
+ */
 export async function scanDomainInfrastructureLive(
   rawDomain: string
 ): Promise<InfraDomainRecord> {
@@ -486,9 +484,17 @@ export async function scanDomainInfrastructureLive(
     queryCloudflareDoh(`_dmarc.${domain}`, 'TXT'),
   ]);
 
-  let asn = 'AS13335';
-  let asnOrg = 'Cloudflare / Edge Transit';
-  let ipCountry = 'US';
+  if (
+    aRecords.length === 0 &&
+    aaaaRecords.length === 0 &&
+    nsRecords.length === 0
+  ) {
+    throw new Error(
+      `"${domain}" resolved no DNS records — domain may not exist or DNS is down`
+    );
+  }
+
+  const dataGaps: string[] = [];
   const primaryIp = aRecords.find((r) => /^\d+\.\d+\.\d+\.\d+$/.test(r));
 
   const [ipWhoResult, shodanData, ripeBgpData] = await Promise.all([
@@ -501,17 +507,24 @@ export async function scanDomainInfrastructureLive(
     primaryIp ? queryRipeBgpOverview(primaryIp) : Promise.resolve(undefined),
   ]);
 
+  let asn: string | null = null;
+  let asnOrg: string | null = null;
   if (ipWhoResult && ipWhoResult.success !== false) {
-    asn = ipWhoResult.connection?.asn
-      ? `AS${ipWhoResult.connection.asn}`
-      : asn;
-    asnOrg =
-      ipWhoResult.connection?.org || ipWhoResult.connection?.isp || asnOrg;
-    ipCountry = ipWhoResult.country_code || ipCountry;
+    asn = ipWhoResult.connection?.asn ? `AS${ipWhoResult.connection.asn}` : null;
+    asnOrg = ipWhoResult.connection?.org || ipWhoResult.connection?.isp || null;
+  } else {
+    dataGaps.push('ipwho.is network attribution unavailable');
+  }
+  // RIPEstat holder is an independent second source for the operating org.
+  if (!asnOrg && ripeBgpData?.holderName) {
+    asnOrg = ripeBgpData.holderName;
+  }
+  if (!primaryIp) {
+    dataGaps.push('No IPv4 A record — Shodan/BGP/IP-geo skipped');
   }
 
-  let registrar = 'ICANN Accredited Registrar';
-  let createdAt = '2024-03-19';
+  let registrar: string | null = null;
+  let createdAt: string | null = null;
   try {
     const rdapRes = await fetch(
       `/api/osint/rdap?domain=${encodeURIComponent(domain)}`
@@ -519,7 +532,7 @@ export async function scanDomainInfrastructureLive(
     const rdapData = rdapRes.ok
       ? await rdapRes.json()
       : await fetch(`https://rdap.org/domain/${encodeURIComponent(domain)}`).then(
-          (r) => r.json()
+          (r) => (r.ok ? r.json() : null)
         );
     if (rdapData) {
       const events = Array.isArray(rdapData.events) ? rdapData.events : [];
@@ -545,10 +558,13 @@ export async function scanDomainInfrastructureLive(
       }
     }
   } catch {
-    // Keep default RDAP metadata
+    // Keep nulls — recorded as data gaps below.
+  }
+  if (registrar === null || createdAt === null) {
+    dataGaps.push('RDAP registration data unavailable');
   }
 
-  let tlsIssuer = "Let's Encrypt / DigiCert TLS";
+  let tlsIssuer: string | null = null;
   const ctSubdomains = new Set<string>();
   try {
     const crtRes = await fetch(
@@ -575,68 +591,54 @@ export async function scanDomainInfrastructureLive(
       }
     }
   } catch {
-    // Keep default CT list
+    // Keep null/empty — recorded as data gaps below.
+  }
+  if (tlsIssuer === null) {
+    dataGaps.push('crt.sh certificate data unavailable');
+  }
+  if (!shodanData) {
+    dataGaps.push('Shodan InternetDB exposure data unavailable');
+  }
+  if (!ripeBgpData) {
+    dataGaps.push('RIPEstat BGP data unavailable');
   }
 
-  if (ctSubdomains.size === 0) {
-    ctSubdomains.add(domain);
-    ctSubdomains.add(`www.${domain}`);
-    ctSubdomains.add(`mail.${domain}`);
-  }
+  const hasSpf = txtRecords.some((t) => t.includes('v=spf1'));
+  const dmarcPolicy = dmarcTxt.length > 0 ? dmarcTxt[0] : null;
 
-  const ctSample = Array.from(ctSubdomains).slice(0, 8);
-  const isNewlyRegistered = createdAt >= '2025-01-01';
-  const vulnCount = shodanData?.vulns.length || 0;
-  const riskScore = Math.min(
-    98,
-    Math.max(
-      24,
-      (isNewlyRegistered ? 45 : 20) +
-        (domain.includes('-') ? 22 : 5) +
-        (txtRecords.some((t) => t.includes('v=spf1')) ? 5 : 18) +
-        vulnCount * 6
-    )
-  );
+  const riskAssessment = computeDomainRiskScore({
+    createdAt,
+    hasDmarc: dmarcPolicy !== null,
+    hasSpf,
+    hasCaa: caaRecords.length > 0,
+    shodanVulnCount: shodanData ? shodanData.vulns.length : null,
+  });
 
   return {
     id: `dom-${Date.now()}`,
     domain,
-    aRecords: aRecords.length > 0 ? aRecords : ['104.21.48.192'],
+    aRecords,
     aaaaRecords,
     mxRecords,
-    nsRecords:
-      nsRecords.length > 0
-        ? nsRecords
-        : ['ns1.cloudflare.com', 'ns2.cloudflare.com'],
+    nsRecords,
     txtRecords: txtRecords.slice(0, 4),
-    dmarcPolicy: dmarcTxt[0] || 'Absent (Spoofing Vulnerable)',
+    dmarcPolicy,
     caaRecords,
     asn,
     asnOrg,
-    ipCountry,
+    ipCountry: ipWhoResult?.country_code || 'UNKNOWN',
     registrar,
     createdAt,
     tlsIssuer,
     ctSubdomainsCount: ctSubdomains.size,
-    ctSubdomainsSample: ctSample,
-    riskScore,
-    shodanData: shodanData || {
-      ip: primaryIp || '104.21.48.192',
-      ports: [80, 443, 8443],
-      cpes: ['cpe:/a:igor_sysoev:nginx', 'cpe:/a:openssl:openssl'],
-      hostnames: [domain],
-      tags: ['cloud', 'cdn'],
-      vulns: [],
-    },
-    ripeBgpData: ripeBgpData || {
-      resource: primaryIp || '104.21.48.0/24',
-      announcedPrefix: primaryIp
-        ? `${primaryIp.split('.').slice(0, 3).join('.')}.0/24`
-        : '104.21.48.0/24',
-      holderName: asnOrg,
-      asnCount: 1,
-      upstreamPeers: [asn],
-    },
+    ctSubdomainsSample: Array.from(ctSubdomains).slice(0, 8),
+    dataGaps,
+    riskAssessment,
+    provenance: makeLiveProvenance(
+      'Cloudflare DoH · RDAP · crt.sh · Shodan InternetDB · RIPEstat'
+    ),
+    ...(shodanData ? { shodanData } : {}),
+    ...(ripeBgpData ? { ripeBgpData } : {}),
   };
 }
 
@@ -826,94 +828,106 @@ export async function searchCorporateAndPublicEntities(
 
 /**
  * 5B. Maltego-Style 1-Click Transform: Crawl GLEIF Level-2 Direct & Ultimate Parent Corporate Entities
+ *
+ * Evidentiary contract: if GLEIF has no parent on record, or is unreachable,
+ * the result says exactly that. This function NEVER invents a placeholder
+ * parent entity — fabricated ownership is worse than no ownership.
  */
 export async function expandGleifParentTransform(
   entity: OsintEntity
-): Promise<{
-  discoveredEntity: OsintEntity;
-  discoveredEdge: OwnershipEdge;
-}> {
+): Promise<GleifParentTransformResult> {
   const leiMatch = entity.identifier.match(/([A-Z0-9]{20})/);
-  if (leiMatch) {
-    const lei = leiMatch[1];
-    try {
-      const res = await fetch(
-        `https://api.gleif.org/api/v1/lei-records/${encodeURIComponent(
-          lei
-        )}/ultimate-parent`
-      );
-      if (res.ok) {
-        const json = await res.json();
-        const d = json?.data;
-        if (d && d.id && d.id !== lei) {
-          const parentLei = String(d.id);
-          const parentName = String(
-            d.attributes?.entity?.legalName?.name || 'Ultimate Parent Holding'
-          );
-          const parentJur = String(
-            d.attributes?.entity?.jurisdiction || 'GLOBAL'
-          );
-          const parentEntity: OsintEntity = {
-            id: `lei-${parentLei}`,
-            label: parentName,
-            type: 'company',
-            jurisdiction: parentJur,
-            identifier: `LEI: ${parentLei}`,
-            riskLevel: 'high',
-            summary: `Discovered via GLEIF Level-2 Ultimate Parent Transform from ${entity.label}.`,
-            attributes: {
-              'LEI Code': parentLei,
-              'Jurisdiction': parentJur,
-              'Discovery Transform': 'GLEIF L2 Ultimate Parent Relationship',
-            },
-            sourceUrl: `https://search.gleif.org/#/record/${parentLei}`,
-          };
-          const edge: OwnershipEdge = {
-            id: `edge-gleif-${Date.now()}`,
-            sourceId: parentEntity.id,
-            targetId: entity.id,
-            relationship: 'Consolidating Ultimate Parent (75%)',
-            ownershipPercent: 75,
-            isOffshoreConduit: ['VG', 'KY', 'MH', 'CY', 'PA'].includes(
-              parentJur
-            ),
-            verifiedSource: 'GLEIF Level-2 Relationship Record',
-          };
-          return { discoveredEntity: parentEntity, discoveredEdge: edge };
-        }
-      }
-    } catch {
-      // Fallback to synthetic offshore parent below
-    }
+  if (!leiMatch) {
+    return {
+      found: false,
+      reason: 'NOT_A_GLEIF_ENTITY',
+      detail: `"${entity.label}" has no GLEIF identifier — corporate parent pivots need a LEI (search the GLEIF registry first, or use a national registry such as OpenCorporates / Companies House).`,
+    };
   }
 
-  // Deterministic high-value offshore parent conduit transform when LEI is private/reporting-exception
-  const syntheticId = `ent-trans-${Date.now()}`;
+  const lei = leiMatch[1];
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://api.gleif.org/api/v1/lei-records/${encodeURIComponent(
+        lei
+      )}/ultimate-parent`
+    );
+  } catch {
+    return {
+      found: false,
+      reason: 'GLEIF_UNAVAILABLE',
+      detail: 'GLEIF upstream unreachable — retry when the registry is reachable.',
+    };
+  }
+
+  if (!res.ok) {
+    return {
+      found: false,
+      reason: 'GLEIF_ERROR',
+      detail: `GLEIF API returned HTTP ${res.status} for LEI ${lei}.`,
+    };
+  }
+
+  let json: {
+    data?: { id?: string; attributes?: { entity?: { legalName?: { name?: string }; jurisdiction?: string } } };
+  };
+  try {
+    json = await res.json();
+  } catch {
+    return {
+      found: false,
+      reason: 'GLEIF_ERROR',
+      detail: `GLEIF returned a malformed payload for LEI ${lei}.`,
+    };
+  }
+
+  const d = json?.data;
+  if (!d || !d.id || d.id === lei) {
+    return {
+      found: false,
+      reason: 'NO_PARENT_ON_RECORD',
+      detail: `GLEIF has no Level-2 ultimate parent for ${entity.label} (LEI ${lei}) — it is either a standalone entity or reports a reporting exception.`,
+    };
+  }
+
+  const parentLei = String(d.id);
+  const parentName = String(
+    d.attributes?.entity?.legalName?.name || `LEI ${parentLei}`
+  );
+  const parentJur = String(d.attributes?.entity?.jurisdiction || 'GLOBAL');
   const discoveredEntity: OsintEntity = {
-    id: syntheticId,
-    label: `${entity.label.split(' ')[0]} Sovereign Nominee Trust Ltd`,
+    id: `lei-${parentLei}`,
+    label: parentName,
     type: 'company',
-    jurisdiction: 'VG',
-    identifier: `BVI-REG-${Math.floor(100000 + Math.random() * 899999)}`,
-    riskLevel: 'critical',
-    summary: `Unwrapped via Level-2 Nominee Transform: Tortola BVI holding conduit exercising voting control over ${entity.label}.`,
+    jurisdiction: parentJur,
+    identifier: `LEI: ${parentLei}`,
+    riskLevel: ['VG', 'KY', 'MH', 'CY', 'PA'].includes(parentJur)
+      ? 'high'
+      : 'low',
+    summary: `GLEIF Level-2 ultimate parent of ${entity.label}, discovered from the official relationship record.`,
     attributes: {
-      'Jurisdiction': 'Tortola, British Virgin Islands (VG)',
-      'Transform Source': 'GLEIF Reporting Exception / Nominee Unwrapper',
-      'Control Mechanism': '68% Voting Preference Shares',
+      'LEI Code': parentLei,
+      'Legal Jurisdiction': parentJur,
+      'Discovery Transform': 'GLEIF L2 Ultimate Parent Relationship',
     },
+    sourceUrl: `https://search.gleif.org/#/record/${parentLei}`,
   };
   const discoveredEdge: OwnershipEdge = {
-    id: `edge-trans-${Date.now()}`,
-    sourceId: syntheticId,
+    id: `edge-gleif-${Date.now()}`,
+    sourceId: discoveredEntity.id,
     targetId: entity.id,
-    relationship: '68% Offshore Voting Control',
-    ownershipPercent: 68,
-    isOffshoreConduit: true,
-    verifiedSource: 'Corporate Unwrapper Transform',
+    relationship: 'Consolidating Ultimate Parent (GLEIF L2)',
+    isOffshoreConduit: ['VG', 'KY', 'MH', 'CY', 'PA'].includes(parentJur),
+    verifiedSource: 'GLEIF Level-2 Relationship Record',
   };
 
-  return { discoveredEntity, discoveredEdge };
+  return {
+    found: true,
+    discoveredEntity,
+    discoveredEdge,
+    provenance: makeLiveProvenance('GLEIF Level-2 Relationship Record'),
+  };
 }
 
 /**
