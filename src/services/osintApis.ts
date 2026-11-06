@@ -1023,6 +1023,61 @@ export async function searchCommonsGeolocatedPhotos(
 }
 
 /**
+ * 8. WhatsMyName username-sweep dataset (free community dataset, zero key)
+ * Served through the local server, which caches it and guards probe URLs.
+ */
+export async function fetchWnnDataset(): Promise<{
+  sites: Array<{
+    name: string;
+    uriCheck: string;
+    eCode: number;
+    eString: string;
+    mCode: number;
+    mString: string;
+    category: string;
+  }>;
+  count: number;
+  fetchedAt: string;
+}> {
+  const res = await fetch('/api/osint/wnn/dataset');
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(String(json?.error || `Dataset endpoint returned HTTP ${res.status}`));
+  }
+  return json;
+}
+
+/**
+ * 9. Live OFAC SDN sanctions list (free public data, zero key)
+ * The server downloads and parses the CSV once per day; screening is local.
+ */
+export async function fetchOfacSdnList(): Promise<{
+  candidates: Array<{
+    id: string;
+    listedName: string;
+    aliases: string[];
+    listSource: 'OFAC_SDN';
+    program: string;
+    entityType: 'INDIVIDUAL' | 'ENTITY' | 'VESSEL';
+    dobOrIncorporation: string;
+    citizenshipOrJurisdiction: string;
+    identifierCode: string;
+    notes: string;
+  }>;
+  count: number;
+  rawCount: number;
+  fetchedAt: string;
+  sourceUrl: string;
+}> {
+  const res = await fetch('/api/osint/sanctions/ofac');
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(String(json?.error || `OFAC endpoint returned HTTP ${res.status}`));
+  }
+  return json;
+}
+
+/**
  * AI photo geolocation (optional capability). Calls the local server, which
  * requires a free GEMINI_API_KEY. The returned candidates are DERIVED
  * hypotheses — the UI must present them with corroboration links.

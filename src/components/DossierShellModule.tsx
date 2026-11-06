@@ -4,8 +4,8 @@ import {
   Building2,
   ExternalLink,
   GitBranch,
+  Inbox,
   Network,
-  Plus,
   Search,
   ShieldAlert,
   Trash2,
@@ -21,6 +21,18 @@ import {
   searchCorporateAndPublicEntities,
 } from '../services/osintApis';
 import { analyzeCorporateGraphTopology } from '../utils/osintForensics';
+import { MODULE_CATALOG } from './moduleCatalog';
+import {
+  Button,
+  DataValue,
+  EmptyState,
+  KeyValueTable,
+  NoticeBanner,
+  Panel,
+  SelectField,
+  TextField,
+  Well,
+} from './ui';
 
 interface DossierShellModuleProps {
   activeCase: InvestigationCase;
@@ -37,6 +49,10 @@ interface DossierShellModuleProps {
     sourceUrl: string;
   }) => void;
 }
+
+/** Screening actions keep the watchlist's amber voice everywhere. */
+const WATCHLIST_ACTION =
+  'border-gap/40 bg-gap/10 text-gap hover:bg-gap/20';
 
 export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
   activeCase,
@@ -81,18 +97,18 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
 
     setIsSearchingApi(true);
     setStatusMessage(
-      `Searching GLEIF Corporate Registry, Wikidata, and OpenAlex for "${clean}"...`
+      `Searching GLEIF, Wikidata and OpenAlex for "${clean}"…`
     );
     try {
       const results = await searchCorporateAndPublicEntities(clean);
       setApiResults(results);
       if (results.length > 0) {
         setStatusMessage(
-          `Found ${results.length} public records for "${clean}". Click "Save to Workspace" on any record to inspect or map ownership.`
+          `Found ${results.length} public records for "${clean}". Save a record to inspect it or map its ownership.`
         );
       } else {
         setStatusMessage(
-          `No public records matched "${clean}". Try searching a company legal name or public figure.`
+          `No public records matched "${clean}". Try a company legal name or a public figure.`
         );
       }
     } catch (err) {
@@ -112,7 +128,7 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
   const handleFindParentCompany = async (ent: OsintEntity) => {
     setIsRunningTransform(true);
     setStatusMessage(
-      `Checking GLEIF corporate registry for parent companies of "${ent.label}"...`
+      `Checking the GLEIF registry for parent companies of "${ent.label}"…`
     );
     try {
       const result = await expandGleifParentTransform(ent);
@@ -121,7 +137,7 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
         onAddOwnershipEdge(result.discoveredEdge);
         onSelectEntity(result.discoveredEntity);
         setStatusMessage(
-          `Found parent entity "${result.discoveredEntity.label}" (${result.discoveredEntity.jurisdiction}) and added ownership link.`
+          `Found parent entity "${result.discoveredEntity.label}" (${result.discoveredEntity.jurisdiction}) and added the ownership link.`
         );
       } else {
         const reasonText: Record<typeof result.reason, string> = {
@@ -166,7 +182,7 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
       verifiedSource: 'User Investigation Link',
     };
     onAddOwnershipEdge(newEdge);
-    setStatusMessage('Added connection between the selected entities.');
+    setStatusMessage('Connection added between the selected entities.');
   };
 
   const handleSaveEntityToNotes = (ent: OsintEntity) => {
@@ -176,250 +192,207 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
       findingSummary: `Public Record Verified [${ent.jurisdiction}]: ${ent.summary}`,
       sourceUrl: ent.sourceUrl || 'https://search.gleif.org',
     });
-    setStatusMessage(`Saved "${ent.label}" to your Watchlist & Notes report.`);
+    setStatusMessage(`"${ent.label}" recorded to the evidence ledger.`);
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Step 1: Clean Search Hero Card */}
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
-            People, Companies &amp; Public Records Lookup
-          </h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Search global corporate registries (GLEIF LEI), public knowledge
-            graphs (Wikidata), and institutions (OpenAlex) to find official
-            registration details, headquarters, and parent companies.
-          </p>
-        </div>
+  const isErrorMessage =
+    statusMessage?.startsWith('Search error') ||
+    statusMessage?.startsWith('Parent lookup failed');
 
+  return (
+    <div className="space-y-4">
+      <Panel
+        tag={MODULE_CATALOG.dossier.num}
+        title={MODULE_CATALOG.dossier.name}
+        description={`${MODULE_CATALOG.dossier.job} Sources: GLEIF LEI registry, Wikidata, OpenAlex.`}
+      >
         <form onSubmit={handleSearchSubmit} className="space-y-3">
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                aria-label="Search company, organization, or person name"
-                placeholder="Enter a company, bank, institution, or public figure (e.g. Maersk, Cloudflare, Trafigura, CERN)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-500"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isSearchingApi}
-              className="px-5 py-2.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
-            >
-              {isSearchingApi ? 'Searching...' : 'Search Public Records'}
-            </button>
+            <TextField
+              type="text"
+              aria-label="Search company, organization, or person name"
+              placeholder="Company, bank, institution, or public figure (e.g. Maersk, Cloudflare, Trafigura, CERN)…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              icon={<Search />}
+              className="flex-1"
+            />
+            <Button type="submit" variant="primary" disabled={isSearchingApi}>
+              {isSearchingApi ? 'Searching…' : 'Search public records'}
+            </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span>Quick search examples:</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
+            <span>Try:</span>
             {['Maersk', 'Cloudflare', 'Trafigura', 'CERN'].map((sample) => (
-              <button
+              <Button
                 key={sample}
-                type="button"
+                variant="chip"
                 onClick={() => {
                   setSearchQuery(sample);
                   runRegistrySearch(sample);
                 }}
-                className="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md text-slate-700 dark:text-slate-300 font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 {sample}
-              </button>
+              </Button>
             ))}
           </div>
         </form>
 
         {statusMessage && (
-          <div
-            role="status"
-            className="px-4 py-2.5 text-xs bg-sky-500/10 border border-sky-500/30 text-sky-800 dark:text-sky-200 rounded-lg flex items-center justify-between"
+          <NoticeBanner
+            className="mt-3"
+            tone={isErrorMessage ? 'danger' : 'info'}
+            onDismiss={() => setStatusMessage(null)}
           >
-            <span>{statusMessage}</span>
-            <button
-              type="button"
-              onClick={() => setStatusMessage(null)}
-              className="text-xs underline ml-4 whitespace-nowrap shrink-0"
-            >
-              Dismiss
-            </button>
-          </div>
+            {statusMessage}
+          </NoticeBanner>
         )}
-      </div>
+      </Panel>
 
-      {/* Step 2: Live Search Results Grid */}
       {apiResults.length > 0 && (
-        <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-                Search Results ({apiResults.length})
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Verified records from GLEIF Global LEI Registry, Wikidata, and
-                OpenAlex
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setApiResults([])}
-              className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-            >
-              Clear Results
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Panel
+          title={`Search results (${apiResults.length})`}
+          description="Records returned live from GLEIF, Wikidata and OpenAlex for this query."
+          actions={
+            <Button variant="ghost" size="sm" onClick={() => setApiResults([])}>
+              Clear results
+            </Button>
+          }
+        >
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {apiResults.map((res) => {
               const isAlreadySaved = activeCase.entities.some(
                 (e) => e.id === res.id
               );
               return (
-                <div
-                  key={res.id}
-                  className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col justify-between space-y-3"
-                >
+                <Well key={res.id} className="flex flex-col justify-between p-3">
                   <div>
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      <span>{res.type.toUpperCase()}</span>
-                      <span>·</span>
-                      <span>Country: {res.jurisdiction}</span>
+                    <div className="font-mono text-[11px] tabular-nums text-ink-3">
+                      {res.type.toUpperCase()} · {res.jurisdiction}
                     </div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-1">
+                    <h3 className="mt-1 text-sm font-semibold text-ink">
                       {res.label}
                     </h3>
-                    <div className="text-xs font-mono text-sky-600 dark:text-sky-400 mt-0.5">
+                    <div className="mt-0.5 font-mono text-xs text-ink-2">
                       {res.identifier}
                     </div>
-                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    <p className="mt-2 text-xs leading-5 text-ink-2">
                       {res.summary}
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
                     {res.sourceUrl ? (
                       <a
                         href={res.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-slate-500 hover:text-sky-500 flex items-center gap-1 whitespace-nowrap"
+                        className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-accent"
                       >
-                        <span>Official Record</span>
-                        <ExternalLink className="w-3 h-3" />
+                        <span>Official record</span>
+                        <ExternalLink className="h-3 w-3" />
                       </a>
                     ) : (
                       <span />
                     )}
 
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={WATCHLIST_ACTION}
                         onClick={() =>
                           onPivotToSanctions(res.label, res.jurisdiction)
                         }
-                        className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500 rounded-md transition-colors whitespace-nowrap shrink-0"
                       >
-                        Check Watchlist
-                      </button>
-                      <button
-                        type="button"
+                        Screen
+                      </Button>
+                      <Button
+                        variant={isAlreadySaved ? 'solid' : 'primary'}
+                        size="sm"
+                        disabled={isAlreadySaved}
                         onClick={() => {
                           onAddEntity(res);
                           onSelectEntity(res);
                           setStatusMessage(
-                            `Added "${res.label}" to your workspace below.`
+                            `"${res.label}" added to your workspace below.`
                           );
                         }}
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-md transition-colors whitespace-nowrap shrink-0"
                       >
-                        {isAlreadySaved ? 'Selected' : '+ Save to Workspace'}
-                      </button>
+                        {isAlreadySaved ? 'In workspace' : 'Save to workspace'}
+                      </Button>
                     </div>
                   </div>
-                </div>
+                </Well>
               );
             })}
           </div>
-        </div>
+        </Panel>
       )}
 
-      {/* Step 3: Saved Entities & Ownership Inspector */}
       {activeCase.entities.length === 0 ? (
-        <div className="p-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-center max-w-2xl mx-auto space-y-3">
-          <Building2 className="w-8 h-8 text-sky-500 mx-auto" />
-          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-            No Companies or People Saved Yet
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Use the search bar above to look up any company, institution, or
-            public figure. Click <strong>&ldquo;+ Save to Workspace&rdquo;</strong>{' '}
-            on any result to inspect its full registration profile and trace its
-            parent company.
-          </p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={<Building2 />}
+            title="No profiles saved yet"
+            hint="Search above, then save a record to inspect its full registration profile and trace its parent company."
+          />
+        </Panel>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left 5 Cols: Saved Entities List & Connections */}
-          <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 font-display">
-                Saved Workspace Profiles ({activeCase.entities.length})
-              </h2>
-              <span className="text-xs text-slate-500 font-mono tabular-nums">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+          <Panel
+            title={`Saved profiles (${activeCase.entities.length})`}
+            actions={
+              <DataValue className="text-ink-3">
                 {activeCase.ownershipEdges.length} links
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {activeCase.entities.map((ent) => {
-                const isSelected = currentEntity?.id === ent.id;
-                return (
-                  <div
-                    key={ent.id}
-                    className={`p-3 rounded-lg border transition-colors flex items-center justify-between gap-2 ${
-                      isSelected
-                        ? 'bg-sky-500/10 border-sky-500/50'
-                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-                    }`}
+              </DataValue>
+            }
+            bodyClassName="space-y-2"
+          >
+            {activeCase.entities.map((ent) => {
+              const isSelected = currentEntity?.id === ent.id;
+              return (
+                <div
+                  key={ent.id}
+                  className={`flex items-center justify-between gap-2 rounded border p-2.5 transition-colors ${
+                    isSelected
+                      ? 'border-accent/40 bg-accent/10'
+                      : 'border-line bg-well'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectEntity(ent)}
+                    className="min-w-0 flex-1 text-left"
                   >
+                    <div className="truncate text-xs font-semibold text-ink">
+                      {ent.label}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-ink-3">
+                      {ent.type.toUpperCase()} · {ent.jurisdiction} ·{' '}
+                      {ent.identifier}
+                    </div>
+                  </button>
+                  {onRemoveEntity && (
                     <button
                       type="button"
-                      onClick={() => onSelectEntity(ent)}
-                      className="flex-1 text-left min-w-0"
+                      aria-label={`Remove ${ent.label}`}
+                      onClick={() => onRemoveEntity(ent.id)}
+                      className="shrink-0 p-1.5 text-ink-3 transition-colors hover:text-danger"
                     >
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {ent.label}
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-500 truncate mt-0.5">
-                        {ent.type.toUpperCase()} · {ent.jurisdiction} ·{' '}
-                        {ent.identifier}
-                      </div>
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                    {onRemoveEntity && (
-                      <button
-                        type="button"
-                        aria-label={`Remove ${ent.label}`}
-                        onClick={() => onRemoveEntity(ent.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  )}
+                </div>
+              );
+            })}
 
-            {/* Ownership Links List */}
             {activeCase.ownershipEdges.length > 0 && (
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Network className="w-3.5 h-3.5 text-sky-500" />
-                  <span>Ownership &amp; Parent Links</span>
+              <div className="space-y-2 border-t border-line pt-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-2">
+                  <Network className="h-3.5 w-3.5 text-ink-3" />
+                  <span>Ownership &amp; parent links</span>
                 </div>
                 {activeCase.ownershipEdges.map((edge) => {
                   const srcName =
@@ -429,204 +402,202 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
                     activeCase.entities.find((e) => e.id === edge.targetId)
                       ?.label || edge.targetId;
                   return (
-                    <div
-                      key={edge.id}
-                      className="p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
-                    >
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    <Well key={edge.id} className="p-2.5 text-xs">
+                      <div className="font-semibold text-ink">
                         {srcName} → {tgtName}
                       </div>
-                      <div className="text-[11px] text-sky-600 dark:text-sky-400 font-mono mt-0.5">
+                      <DataValue className="mt-0.5 text-ink-2">
                         {edge.relationship} ({edge.ownershipPercent ?? 100}%)
-                      </div>
-                    </div>
+                      </DataValue>
+                    </Well>
                   );
                 })}
               </div>
             )}
 
-            {/* Simple Add Link Form when 2+ entities exist */}
             {activeCase.entities.length >= 2 && (
               <form
                 onSubmit={handleAddConnection}
-                className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2 text-xs"
+                className="space-y-2 border-t border-line pt-3 text-xs"
               >
-                <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <GitBranch className="w-3.5 h-3.5 text-sky-500" />
-                  <span>Link Two Saved Profiles</span>
+                <div className="flex items-center gap-1 font-semibold text-ink-2">
+                  <GitBranch className="h-3.5 w-3.5 text-ink-3" />
+                  <span>Link two saved profiles</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <select
+                  <SelectField
                     aria-label="Source entity"
+                    className="h-8 text-xs"
                     value={sourceId || activeCase.entities[0]?.id}
                     onChange={(e) => setSourceId(e.target.value)}
-                    className="px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100"
                   >
                     {activeCase.entities.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.label}
                       </option>
                     ))}
-                  </select>
-                  <select
+                  </SelectField>
+                  <SelectField
                     aria-label="Target entity"
+                    className="h-8 text-xs"
                     value={targetId || activeCase.entities[1]?.id}
                     onChange={(e) => setTargetId(e.target.value)}
-                    className="px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100"
                   >
                     {activeCase.entities.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.label}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
+                  <TextField
                     type="text"
+                    className="h-8 flex-1 text-xs"
                     value={relLabel}
                     onChange={(e) => setRelLabel(e.target.value)}
                     placeholder="Relationship (e.g. Parent Company)"
-                    className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100"
                   />
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded whitespace-nowrap shrink-0"
-                  >
-                    + Link
-                  </button>
+                  <TextField
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Ownership percentage"
+                    className="h-8 w-16 shrink-0 text-center font-mono text-xs"
+                    value={ownershipPct}
+                    onChange={(e) => setOwnershipPct(e.target.value)}
+                    placeholder="%"
+                  />
+                  <Button type="submit" variant="primary" size="sm">
+                    Link
+                  </Button>
                 </div>
               </form>
             )}
-          </div>
+          </Panel>
 
-          {/* Right 7 Cols: Detailed Entity Profile Card */}
-          <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 space-y-5">
+          <Panel bodyClassName="space-y-5">
             {currentEntity && (
               <>
-                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-                  <div>
-                    <div className="text-xs font-mono text-sky-600 dark:text-sky-400">
-                      {currentEntity.type.toUpperCase()} · COUNTRY:{' '}
-                      {currentEntity.jurisdiction}
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[11px] uppercase tracking-wide text-ink-3">
+                      {currentEntity.type} · {currentEntity.jurisdiction}
                     </div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-0.5 font-display">
+                    <h2 className="mt-0.5 text-lg font-semibold text-ink">
                       {currentEntity.label}
                     </h2>
-                    <div className="text-xs font-mono text-slate-500 mt-0.5">
+                    <DataValue className="mt-0.5 text-ink-2">
                       {currentEntity.identifier}
-                    </div>
+                    </DataValue>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
+                    <Button
+                      variant="solid"
+                      size="sm"
+                      icon={<Workflow className="h-3.5 w-3.5" />}
                       onClick={() => handleFindParentCompany(currentEntity)}
                       disabled={isRunningTransform}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded-lg transition-colors whitespace-nowrap shrink-0"
                     >
-                      <Workflow className="w-3.5 h-3.5" />
-                      <span>
-                        {isRunningTransform
-                          ? 'Looking up Parent...'
-                          : 'Find Parent Company'}
-                      </span>
-                    </button>
+                      {isRunningTransform
+                        ? 'Looking up parent…'
+                        : 'Find parent company'}
+                    </Button>
 
-                    <button
-                      type="button"
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<BookmarkPlus className="h-3.5 w-3.5" />}
                       onClick={() => handleSaveEntityToNotes(currentEntity)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
                     >
-                      <BookmarkPlus className="w-3.5 h-3.5" />
-                      <span>Save to Notes</span>
-                    </button>
+                      Record finding
+                    </Button>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <h3 className="mb-1 text-[11px] font-semibold text-ink-2">
                     Summary
                   </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <p className="text-sm leading-6 text-ink-2">
                     {currentEntity.summary}
                   </p>
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Official Registry Details
+                  <h3 className="mb-2 text-[11px] font-semibold text-ink-2">
+                    Official registry details
                   </h3>
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden text-xs">
-                    {Object.entries(currentEntity.attributes).map(([k, v]) => (
-                      <div
-                        key={k}
-                        className="px-3.5 py-2.5 bg-slate-50/60 dark:bg-slate-950/60 flex items-center justify-between gap-4"
-                      >
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {k}
-                        </span>
-                        <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100 text-right">
-                          {v}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <KeyValueTable
+                    rows={Object.entries(currentEntity.attributes).map(
+                      ([k, v]) => ({ label: k, value: v })
+                    )}
+                  />
                 </div>
 
                 {topologyAnalysis.effectiveOwnershipPaths.length > 0 && (
-                  <div className="pt-2">
-                    <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Calculated Ownership Chain
+                  <div className="pt-1">
+                    <h3 className="mb-2 text-[11px] font-semibold text-ink-2">
+                      Calculated ownership chain
                     </h3>
                     <div className="space-y-1.5">
                       {topologyAnalysis.effectiveOwnershipPaths.map((p, idx) => (
                         <div
                           key={idx}
-                          className="p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between text-xs font-mono tabular-nums"
+                          className="flex items-center justify-between gap-3 rounded border border-line bg-well p-2.5 font-mono text-xs tabular-nums"
                         >
-                          <span>{p.pathLabels.join(' → ')}</span>
-                          <span className="font-bold text-sky-600 dark:text-sky-400">
-                            {p.effectiveEquityPercent}% Stake
+                          <span className="min-w-0 text-ink-2">
+                            {p.pathLabels.join(' → ')}
                           </span>
+                          <DataValue className="shrink-0 font-semibold">
+                            {p.effectiveEquityPercent}% stake
+                          </DataValue>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center justify-between border-t border-line pt-3">
                   {currentEntity.sourceUrl ? (
                     <a
                       href={currentEntity.sourceUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
+                      className="flex items-center gap-1 text-xs text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-accent"
                     >
-                      <span>Open Source Registry Page</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open registry page</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   ) : (
                     <span />
                   )}
 
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={WATCHLIST_ACTION}
+                    icon={<ShieldAlert className="h-3.5 w-3.5" />}
                     onClick={() =>
                       onPivotToSanctions(
                         currentEntity.label,
                         currentEntity.jurisdiction
                       )
                     }
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 rounded-lg transition-colors whitespace-nowrap shrink-0"
                   >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>Screen in Watchlist Tool</span>
-                  </button>
+                    Screen in watchlist
+                  </Button>
                 </div>
               </>
             )}
-          </div>
+            {!currentEntity && (
+              <EmptyState
+                icon={<Inbox />}
+                title="Select a profile"
+                hint="Choose a saved profile on the left to inspect its registry details and ownership chain."
+              />
+            )}
+          </Panel>
         </div>
       )}
     </div>

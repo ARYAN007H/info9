@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Download, Moon, RotateCcw, Sun } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import type {
   InfraDomainRecord,
   InvestigationCase,
@@ -9,11 +9,14 @@ import type {
 } from './types/osint';
 import { DEFAULT_WORKSPACE_CASE } from './data/seedCases';
 import { createLinkedLedgerEntry } from './utils/osintForensics';
-import { TopNavBar } from './components/TopNavBar';
+import { TopNavBar, type ProvenanceTally } from './components/TopNavBar';
+import { CaseSpine } from './components/CaseSpine';
+import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { GeolocationModule } from './components/GeolocationModule';
 import { DossierShellModule } from './components/DossierShellModule';
 import { InfraClusterModule } from './components/InfraClusterModule';
 import { MediaForensicsModule } from './components/MediaForensicsModule';
+import { IdentitySweepModule } from './components/IdentitySweepModule';
 import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 
@@ -41,7 +44,7 @@ export function App() {
   );
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
-  const [exportBanner, setExportBanner] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -61,6 +64,12 @@ export function App() {
   }, [isDark]);
 
   useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -72,6 +81,30 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  /**
+   * Case-wide provenance headline: counts every recorded provenance envelope
+   * and every named data gap, so the bench states what is known and what is
+   * missing before the analyst reads a single panel.
+   */
+  const provenanceTally: ProvenanceTally = useMemo(() => {
+    let live = 0;
+    let derived = 0;
+    let gap = 0;
+    for (const rec of workspaceCase.infraRecords as InfraDomainRecord[]) {
+      if (rec.provenance?.status === 'LIVE') live += 1;
+      else if (rec.provenance?.status === 'DERIVED') derived += 1;
+      gap += rec.dataGaps.length;
+    }
+    const weather = workspaceCase.geoState.weatherVerification;
+    if (weather) {
+      if (weather.provenance?.status === 'LIVE') live += 1;
+      else if (weather.provenance?.status === 'DERIVED') derived += 1;
+      else gap += 1;
+      if (weather.elevationMeters == null) gap += 1;
+    }
+    return { live, derived, gap };
+  }, [workspaceCase]);
 
   const handleAppendLedger = (entryInput: {
     module: ModuleId;
@@ -140,7 +173,7 @@ export function App() {
     localStorage.removeItem(STORAGE_KEY);
     setWorkspaceCase(DEFAULT_WORKSPACE_CASE);
     setSelectedEntity(null);
-    setExportBanner('Cleared workspace and reset to a fresh state.');
+    setToast('Workspace cleared. A fresh case file has been started.');
   };
 
   const handleExportSignedDossier = () => {
@@ -195,187 +228,140 @@ export function App() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    setExportBanner(
-      `Downloaded Markdown report (osint-investigation-report.md).`
-    );
+    setToast('Case report downloaded as osint-investigation-report.md.');
   };
 
   return (
     <div
       id="top"
-      className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+      className="flex h-dvh flex-col overflow-hidden bg-app text-ink"
     >
-      {/* Strict 3-Zone Top Bar Contract */}
       <TopNavBar
-        activeModule={activeModule}
-        onSelectModule={setActiveModule}
+        provenanceTally={provenanceTally}
+        isDark={isDark}
+        onToggleTheme={() => setIsDark((d) => !d)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
-      {/* Clean Full-Width Workspace Container (No Cluttered Demo Case Sidebar) */}
-      <main className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-[1240px] mx-auto space-y-5">
-          {/* Sleek Workspace Status & Utility Bar */}
-          <div className="px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-4 text-xs">
-            <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-400">
-              <span className="font-semibold text-slate-900 dark:text-slate-100">
-                Your Investigation Workspace
-              </span>
-              <span aria-hidden="true">·</span>
-              <button
-                type="button"
-                onClick={() => setActiveModule('dossier')}
-                className="hover:text-sky-500 transition-colors font-mono tabular-nums"
-              >
-                {workspaceCase.entities.length} Saved Profiles
-              </button>
-              <span aria-hidden="true">·</span>
-              <button
-                type="button"
-                onClick={() => setActiveModule('infra')}
-                className="hover:text-sky-500 transition-colors font-mono tabular-nums"
-              >
-                {workspaceCase.infraRecords.length} Scanned Domains
-              </button>
-              <span aria-hidden="true">·</span>
-              <button
-                type="button"
-                onClick={() => setActiveModule('sanctions')}
-                className="hover:text-sky-500 transition-colors font-mono tabular-nums"
-              >
-                {workspaceCase.evidenceLedger.length} Saved Notes
-              </button>
-            </div>
+      <div className="flex min-h-0 flex-1">
+        <CaseSpine
+          activeCase={workspaceCase}
+          activeModule={activeModule}
+          onSelectModule={setActiveModule}
+          onResetWorkspace={handleResetWorkspace}
+        />
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleExportSignedDossier}
-                className="flex items-center gap-1.5 px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <Download className="w-3.5 h-3.5 text-sky-500" />
-                <span>Download Report (.MD)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetWorkspace}
-                className="flex items-center gap-1.5 px-3 py-1.5 font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsDark((d) => !d)}
-                aria-label={
-                  isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          {/* Remounting on module switch gives the single orchestrated
+              motion moment: the instrument's panels resolve in. */}
+          <div
+            key={activeModule}
+            className="panel-enter mx-auto max-w-[1500px] space-y-4 px-4 py-5 sm:px-5"
+          >
+            {activeModule === 'geolocation' && (
+              <GeolocationModule
+                activeCase={workspaceCase}
+                onUpdateGeoState={(geoUpdater) =>
+                  setWorkspaceCase((prev) => ({
+                    ...prev,
+                    geoState: geoUpdater(prev.geoState),
+                  }))
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                {isDark ? (
-                  <>
-                    <Sun className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Light</span>
-                  </>
-                ) : (
-                  <>
-                    <Moon className="w-3.5 h-3.5 text-slate-700" />
-                    <span>Dark</span>
-                  </>
-                )}
-              </button>
-            </div>
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'dossier' && (
+              <DossierShellModule
+                activeCase={workspaceCase}
+                selectedEntity={selectedEntity}
+                onSelectEntity={setSelectedEntity}
+                onAddEntity={handleAddEntity}
+                onRemoveEntity={handleRemoveEntity}
+                onAddOwnershipEdge={handleAddOwnershipEdge}
+                onPivotToSanctions={(entityName, jurisdiction) => {
+                  setWorkspaceCase((prev) => ({
+                    ...prev,
+                    sanctionsQuery: {
+                      ...prev.sanctionsQuery,
+                      targetName: entityName,
+                      targetJurisdiction: jurisdiction,
+                    },
+                  }));
+                  setActiveModule('sanctions');
+                }}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'infra' && (
+              <InfraClusterModule
+                activeCase={workspaceCase}
+                onAddInfraRecord={handleAddInfraRecord}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'forensics' && (
+              <MediaForensicsModule
+                activeCase={workspaceCase}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'identity' && (
+              <IdentitySweepModule
+                activeCase={workspaceCase}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'sanctions' && (
+              <SanctionsLedgerModule
+                activeCase={workspaceCase}
+                onUpdateSanctionsQuery={(newQuery) =>
+                  setWorkspaceCase((prev) => ({
+                    ...prev,
+                    sanctionsQuery: {
+                      ...prev.sanctionsQuery,
+                      ...newQuery,
+                    },
+                  }))
+                }
+                onAppendLedger={handleAppendLedger}
+                onExportMarkdown={handleExportSignedDossier}
+              />
+            )}
           </div>
+        </main>
+      </div>
 
-          {exportBanner && (
-            <div
-              role="status"
-              className="px-4 py-2.5 text-xs bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 rounded-lg flex items-center justify-between"
-            >
-              <span>{exportBanner}</span>
-              <button
-                type="button"
-                onClick={() => setExportBanner(null)}
-                className="underline ml-4"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+      <EvidenceDrawer
+        entries={workspaceCase.evidenceLedger}
+        onExport={handleExportSignedDossier}
+      />
 
-          {activeModule === 'geolocation' && (
-            <GeolocationModule
-              activeCase={workspaceCase}
-              onUpdateGeoState={(geoUpdater) =>
-                setWorkspaceCase((prev) => ({
-                  ...prev,
-                  geoState: geoUpdater(prev.geoState),
-                }))
-              }
-              onAppendLedger={handleAppendLedger}
-            />
-          )}
-
-          {activeModule === 'dossier' && (
-            <DossierShellModule
-              activeCase={workspaceCase}
-              selectedEntity={selectedEntity}
-              onSelectEntity={setSelectedEntity}
-              onAddEntity={handleAddEntity}
-              onRemoveEntity={handleRemoveEntity}
-              onAddOwnershipEdge={handleAddOwnershipEdge}
-              onPivotToSanctions={(entityName, jurisdiction) => {
-                setWorkspaceCase((prev) => ({
-                  ...prev,
-                  sanctionsQuery: {
-                    ...prev.sanctionsQuery,
-                    targetName: entityName,
-                    targetJurisdiction: jurisdiction,
-                  },
-                }));
-                setActiveModule('sanctions');
-              }}
-              onAppendLedger={handleAppendLedger}
-            />
-          )}
-
-          {activeModule === 'infra' && (
-            <InfraClusterModule
-              activeCase={workspaceCase}
-              onAddInfraRecord={handleAddInfraRecord}
-              onAppendLedger={handleAppendLedger}
-            />
-          )}
-
-          {activeModule === 'forensics' && (
-            <MediaForensicsModule
-              activeCase={workspaceCase}
-              onAppendLedger={handleAppendLedger}
-            />
-          )}
-
-          {activeModule === 'sanctions' && (
-            <SanctionsLedgerModule
-              activeCase={workspaceCase}
-              onUpdateSanctionsQuery={(newQuery) =>
-                setWorkspaceCase((prev) => ({
-                  ...prev,
-                  sanctionsQuery: {
-                    ...prev.sanctionsQuery,
-                    ...newQuery,
-                  },
-                }))
-              }
-              onAppendLedger={handleAppendLedger}
-              onExportMarkdown={handleExportSignedDossier}
-            />
-          )}
+      {toast && (
+        <div
+          role="status"
+          className="panel-enter fixed right-4 top-16 z-40 flex max-w-md items-center gap-3 rounded-md border border-line bg-panel px-3.5 py-2.5 text-xs text-ink shadow-xl"
+        >
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-live"
+          />
+          {toast}
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            aria-label="Dismiss notification"
+            className="text-ink-3 hover:text-ink"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-      </main>
+      )}
 
-      {/* Global Quick Jump Modal (⌘K) */}
       <CommandPaletteModal
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}

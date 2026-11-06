@@ -1,73 +1,91 @@
-import React from 'react';
-import type { ModuleId } from '../types/osint';
+import { Moon, Search, Sun } from 'lucide-react';
+
+export interface ProvenanceTally {
+  live: number;
+  derived: number;
+  gap: number;
+}
 
 interface TopNavBarProps {
-  activeModule: ModuleId;
-  onSelectModule: (moduleId: ModuleId) => void;
+  provenanceTally: ProvenanceTally;
+  isDark: boolean;
+  onToggleTheme: () => void;
   onOpenCommandPalette: () => void;
 }
 
-const NAV_ITEMS: Array<{ id: ModuleId; label: string }> = [
-  { id: 'geolocation', label: 'Geolocate' },
-  { id: 'dossier', label: 'People & Companies' },
-  { id: 'infra', label: 'Website & IP' },
-  { id: 'forensics', label: 'Photo Forensics' },
-  { id: 'sanctions', label: 'Watchlist & Notes' },
-];
-
-export const TopNavBar: React.FC<TopNavBarProps> = ({
-  activeModule,
-  onSelectModule,
+/**
+ * Instrument strip: wordmark, case-wide provenance tally, search.
+ * Module navigation lives in the case spine, not here.
+ */
+export function TopNavBar({
+  provenanceTally,
+  isDark,
+  onToggleTheme,
   onOpenCommandPalette,
-}) => {
+}: TopNavBarProps) {
+  const { live, derived, gap } = provenanceTally;
+  const tallyEntries = [
+    { value: live, label: 'live', dot: 'bg-live' },
+    { value: derived, label: 'derived', dot: 'bg-derived' },
+    { value: gap, label: 'gaps', dot: 'bg-gap' },
+  ].filter((entry) => entry.value > 0);
+  const hasTally = tallyEntries.length > 0;
+
   return (
-    <header className="flex items-center justify-between gap-8 px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
-      {/* Zone 1: Single text element wordmark */}
+    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-line bg-panel px-4 sm:px-5">
       <a
         href="#top"
-        onClick={(e) => {
-          e.preventDefault();
-          onSelectModule('geolocation');
-        }}
-        className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0 font-display"
+        onClick={(e) => e.preventDefault()}
+        className="flex shrink-0 items-center gap-2.5"
+        aria-label="info9 home"
       >
-        Argon OSINT
+        <span aria-hidden="true" className="h-2 w-2 bg-accent" />
+        <span className="font-display text-lg font-bold tracking-tight text-ink">
+          info9
+        </span>
+        <span className="signage hidden text-[10px] font-semibold text-ink-3 sm:inline">
+          Argon workbench
+        </span>
       </a>
 
-      {/* Zone 2: 5 clean single-line text navigation links */}
-      <nav
-        aria-label="OSINT Investigation Tools"
-        className="flex items-center gap-7 text-sm font-medium text-slate-600 dark:text-slate-400 overflow-x-auto"
-      >
-        {NAV_ITEMS.map((item) => {
-          const isActive = activeModule === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelectModule(item.id)}
-              className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b-2 ${
-                isActive
-                  ? 'text-sky-600 dark:text-sky-400 border-sky-500 font-semibold'
-                  : 'border-transparent hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
+      {hasTally && (
+        <div
+          className="hidden items-center gap-4 font-mono text-[11px] tabular-nums text-ink-3 md:flex"
+          title="Provenance across the case: values fetched live from sources, values derived locally, and named data gaps"
+        >
+          {tallyEntries.map((entry) => (
+            <span key={entry.label} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 rounded-full ${entry.dot}`}
+              />
+              {entry.value} {entry.label}
+            </span>
+          ))}
+        </div>
+      )}
 
-      {/* Zone 3: 1 primary action */}
-      <div className="flex items-center shrink-0">
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onToggleTheme}
+          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="flex h-9 w-9 items-center justify-center rounded text-ink-2 transition-colors hover:bg-well hover:text-ink"
+        >
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+          className="flex h-9 items-center gap-2 rounded border border-line bg-well px-3 text-[13px] font-medium text-ink transition-colors hover:border-line-strong"
         >
-          Quick Jump ⌘K
+          <Search className="h-4 w-4 text-ink-3" />
+          <span>Search</span>
+          <span className="hidden rounded border border-line bg-app px-1.5 py-0.5 font-mono text-[10px] text-ink-3 sm:inline">
+            ⌘K
+          </span>
         </button>
       </div>
     </header>
   );
-};
+}

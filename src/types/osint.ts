@@ -3,6 +3,7 @@ export type ModuleId =
   | 'dossier'
   | 'infra'
   | 'forensics'
+  | 'identity'
   | 'sanctions';
 
 export type EntityType =

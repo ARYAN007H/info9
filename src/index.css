@@ -1,24 +1,161 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Evidence Bench — design tokens.
+ * Raw values swap under `.dark`; the `@theme inline` block maps them to
+ * Tailwind utilities (bg-panel, text-ink-2, border-line, …) that resolve
+ * at runtime, so both modes stay in sync with a single class vocabulary.
+ */
+:root {
+  --app: #edeeec;
+  --panel: #f8f8f6;
+  --well: #ffffff;
+  --line: #d3d7d4;
+  --line-strong: #bfc5c1;
+  --ink: #1b2224;
+  --ink-2: #525d61;
+  --ink-3: #7c868a;
+  --accent: #de4e00;
+  --accent-strong: #c74400;
+  --on-accent: #fff7f2;
+  --live: #0e8a5f;
+  --derived: #1d6fbf;
+  --gap: #9a6b00;
+  --danger: #c4324a;
+  --scrim: rgba(20, 26, 28, 0.45);
+}
+
+.dark {
+  --app: #0e1113;
+  --panel: #14181b;
+  --well: #1a1f23;
+  --line: #272e33;
+  --line-strong: #39424a;
+  --ink: #e9edee;
+  --ink-2: #9faab2;
+  --ink-3: #6b767e;
+  --accent: #ff6b2c;
+  --accent-strong: #ff8350;
+  --on-accent: #171009;
+  --live: #3ecf8e;
+  --derived: #6fb7ff;
+  --gap: #e5b454;
+  --danger: #f26d7e;
+  --scrim: rgba(6, 8, 10, 0.72);
+}
+
+@theme inline {
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-well: var(--well);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-live: var(--live);
+  --color-derived: var(--derived);
+  --color-gap: var(--gap);
+  --color-danger: var(--danger);
+  --color-scrim: var(--scrim);
+
+  --font-sans: "Archivo", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-display: "Archivo", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 @layer base {
   :root {
-    --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-signage: "Archivo", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  html {
+    scrollbar-color: var(--line-strong) transparent;
   }
 
   body {
     font-family: var(--font-sans);
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-size: 14px;
+    background: var(--app);
+    color: var(--ink);
   }
 
-  h1, h2, h3, h4, .font-display {
-    font-family: var(--font-display);
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--ink);
   }
 
-  code, pre, .font-mono, .tabular-nums {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Signage voice: expanded Archivo for the wordmark, equipment tags and
+     catalogue labels — the wayfinding layer of the bench. */
+  .signage {
+    font-family: var(--font-signage);
+    font-stretch: 122%;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  code,
+  pre,
+  .font-mono,
+  .tabular-nums {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* The single orchestrated motion moment: module panels resolve in when the
+   analyst switches instruments. Disabled for reduced-motion users. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.panel-enter {
+  animation: panel-in 140ms ease-out backwards;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.drawer-enter {
+  animation: drawer-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-enter,
+  .drawer-enter {
+    animation: none;
   }
 }

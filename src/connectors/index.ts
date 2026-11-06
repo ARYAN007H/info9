@@ -396,6 +396,174 @@ const commonsGeoPhotos: Connector = {
   },
 };
 
+const urlscanSearch: Connector = {
+  id: 'urlscan-search',
+  label: 'URLScan.io Public Search',
+  description: 'Recent public scans of a domain: pages, IPs, technologies.',
+  category: 'infra',
+  accepts: 'domain',
+  emits: ['domain', 'ip'],
+  policy: {
+    requiresKey: false,
+    docsUrl: 'https://urlscan.io/docs/api/',
+    rateLimitPerMinute: 0,
+  },
+  async run(target) {
+    const clean = target.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(clean)) {
+      throw new Error(`"${target}" is not a valid domain`);
+    }
+    const json = (await fetchJsonCached(
+      `https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(clean)}&size=12`
+    )) as { results?: Array<Record<string, unknown>> };
+    const results = Array.isArray(json?.results) ? json.results : [];
+    return result(
+      this.id,
+      clean,
+      results,
+      results
+        .map((r) => {
+          const page = r.page as { ip?: string; url?: string } | undefined;
+          return {
+            kind: (page?.ip ? 'ip' : 'domain') as EntityKind,
+            value: String(page?.ip ?? clean),
+            label: String(page?.url ?? ''),
+          };
+        })
+        .slice(0, 10),
+      'URLScan.io public search',
+      results.length === 0
+        ? ['No public scans indexed for this domain']
+        : []
+    );
+  },
+};
+
+const githubUserRecon: Connector = {
+  id: 'github-user-recon',
+  label: 'GitHub Public Account Recon',
+  description: 'Resolve a GitHub handle: profile, bio, orgs, repo/activity counts.',
+  category: 'corporate',
+  accepts: 'entity-name',
+  emits: ['entity-name'],
+  policy: {
+    requiresKey: false,
+    docsUrl: 'https://docs.github.com/en/rest',
+    rateLimitPerMinute: 10,
+  },
+  async run(target) {
+    const handle = target.trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(handle)) {
+      throw new Error(`"${target}" is not a valid GitHub handle`);
+    }
+    let profile: Record<string, unknown>;
+    try {
+      profile = (await fetchJsonCached(
+        `https://api.github.com/users/${encodeURIComponent(handle)}`
+      )) as Record<string, unknown>;
+    } catch (err) {
+      return result(this.id, handle, null, [], 'GitHub REST API', [
+        `GitHub lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+      ]);
+    }
+    if (!profile || Object.keys(profile).length === 0 || profile.message === 'Not Found') {
+      return result(this.id, handle, null, [], 'GitHub REST API', [
+        'No GitHub account with this handle',
+      ]);
+    }
+    return result(
+      this.id,
+      handle,
+      profile,
+      [
+        {
+          kind: 'entity-name',
+          value: String(profile.login ?? handle),
+          label: `${profile.public_repos ?? '?'} public repos · created ${String(profile.created_at ?? '?').slice(0, 10)}`,
+        },
+      ],
+      'GitHub REST API'
+    );
+  },
+};
+
+const ipGeolocation: Connector = {
+  id: 'ip-geolocation',
+  label: 'IP Geolocation (ipwho.is)',
+  description: 'City/country/ASN/timezone attribution for an IPv4 address.',
+  category: 'infra',
+  accepts: 'ip',
+  emits: ['ip', 'coordinates'],
+  policy: {
+    requiresKey: false,
+    docsUrl: 'https://ipwho.is/',
+    rateLimitPerMinute: 0,
+  },
+  async run(target) {
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(target)) {
+      throw new Error(`"${target}" is not a valid IPv4 address`);
+    }
+    const json = (await fetchJsonCached(
+      `https://ipwho.is/${encodeURIComponent(target)}`
+    )) as Record<string, unknown>;
+    if (json.success === false) {
+      return result(this.id, target, json, [], 'ipwho.is', [
+        'ipwho.is could not attribute this IP',
+      ]);
+    }
+    const connection = json.connection as { asn?: number; org?: string } | undefined;
+    return result(
+      this.id,
+      target,
+      json,
+      [
+        { kind: 'ip', value: target, label: String(json.country ?? '') },
+        {
+          kind: 'coordinates',
+          value: `${json.latitude},${json.longitude}`,
+          label: String(json.city ?? json.country ?? ''),
+        },
+      ],
+      'ipwho.is',
+      connection?.asn ? [] : ['ASN attribution missing']
+    );
+  },
+};
+
+const waybackHistory: Connector = {
+  id: 'wayback-history',
+  label: 'Wayback Machine CDX History',
+  description: 'Archival capture history and earliest appearance of a URL.',
+  category: 'archive',
+  accepts: 'domain',
+  emits: ['domain'],
+  policy: {
+    requiresKey: false,
+    docsUrl: 'https://github.com/internetarchive/wayback/tree/master/wayback-cdx-server',
+    rateLimitPerMinute: 0,
+  },
+  async run(target) {
+    const clean = target.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(clean)) {
+      throw new Error(`"${target}" is not a valid domain`);
+    }
+    const json = (await fetchJsonCached(
+      `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(
+        clean
+      )}&output=json&limit=25&fl=timestamp,original,mimetype,statuscode,digest`
+    )) as unknown[];
+    const rows = Array.isArray(json) ? json.slice(1) : [];
+    return result(
+      this.id,
+      clean,
+      rows,
+      [{ kind: 'domain', value: clean, label: `${rows.length} archival captures` }],
+      'Internet Archive Wayback CDX',
+      rows.length === 0 ? ['No archival captures found (never archived or too new)'] : []
+    );
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -409,6 +577,10 @@ const REGISTRY: Connector[] = [
   gleifEntitySearch,
   wikidataSearch,
   commonsGeoPhotos,
+  urlscanSearch,
+  githubUserRecon,
+  ipGeolocation,
+  waybackHistory,
 ];
 
 export function listConnectors(): Connector[] {

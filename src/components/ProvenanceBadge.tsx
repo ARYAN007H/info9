@@ -7,17 +7,17 @@ const STATUS_STYLES: Record<
   { chip: string; label: string; Icon: typeof ShieldCheck }
 > = {
   LIVE: {
-    chip: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+    chip: 'border-live/35 bg-live/10 text-live',
     label: 'LIVE',
     Icon: ShieldCheck,
   },
   DERIVED: {
-    chip: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-900',
+    chip: 'border-derived/35 bg-derived/10 text-derived',
     label: 'DERIVED',
     Icon: ShieldQuestion,
   },
   UNAVAILABLE: {
-    chip: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+    chip: 'border-gap/40 bg-gap/10 text-gap',
     label: 'NO DATA',
     Icon: ShieldX,
   },
@@ -46,12 +46,12 @@ export default function ProvenanceBadge({
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 border rounded text-[10px] font-bold tracking-wide ${style.chip}`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${style.chip}`}
     >
-      <style.Icon className="w-3 h-3 shrink-0" />
+      <style.Icon className="h-3 w-3 shrink-0" />
       <span>{style.label}</span>
       {!compact && (
-        <span className="font-medium opacity-80 normal-case tracking-normal">
+        <span className="font-medium normal-case tracking-normal opacity-80">
           {meta.status === 'UNAVAILABLE' ? meta.note || meta.source : meta.source}
         </span>
       )}

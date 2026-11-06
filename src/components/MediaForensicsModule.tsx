@@ -2,8 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   BookmarkPlus,
-  Eye,
-  FileCode2,
   ScanSearch,
   Sliders,
   Upload,
@@ -15,6 +13,17 @@ import {
   parseUploadedBinaryMetadata,
 } from '../utils/osintForensics';
 import { checkWaybackArchivalHistory } from '../services/osintApis';
+import { MODULE_CATALOG } from './moduleCatalog';
+import {
+  Button,
+  DataLabel,
+  DataValue,
+  NoticeBanner,
+  Panel,
+  SegmentedTabs,
+  TextField,
+  Well,
+} from './ui';
 
 interface MediaForensicsModuleProps {
   activeCase: InvestigationCase;
@@ -37,22 +46,22 @@ const MODE_DESCRIPTIONS: Record<
   { label: string; helpText: string }
 > = {
   original_with_rois: {
-    label: 'Original Photo',
+    label: 'Original',
     helpText:
       'Displays the source image with any flagged splice or edit regions outlined.',
   },
   ela_heatmap: {
-    label: 'Compression Heatmap (ELA)',
+    label: 'ELA heatmap',
     helpText:
       'Highlights areas re-saved at a different JPEG quality. Brighter patches inside a uniform surface often indicate pasted or edited content.',
   },
   clone_vectors: {
-    label: 'Copy-Paste Clone Detector',
+    label: 'Clone detector',
     helpText:
       'Identifies identical pixel blocks that were copied and pasted from one part of the image to another.',
   },
   luminance_edge: {
-    label: 'Edge & Boundary Filter',
+    label: 'Edge filter',
     helpText:
       'Amplifies sharp contrast transitions to reveal hidden text overlays or cut-and-paste borders.',
   },
@@ -93,7 +102,7 @@ function drawProceduralForensicScene(
   ctx.fillStyle = '#94a3b8';
   ctx.fillRect(118, 125, 76, 56);
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 11px JetBrains Mono, monospace';
+  ctx.font = 'bold 11px "Spline Sans Mono", monospace';
   ctx.fillText('TANK #A12-MOD', 122, 156);
 
   // Vessel Hull on right
@@ -110,10 +119,10 @@ function drawProceduralForensicScene(
   ctx.fillStyle = '#1e293b';
   ctx.fillRect(365, 182, 145, 38);
   ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 12px JetBrains Mono, monospace';
+  ctx.font = 'bold 12px "Spline Sans Mono", monospace';
   ctx.fillText('NORDIC POLARIS', 375, 200);
   ctx.fillStyle = '#fbbf24';
-  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.font = '10px "Spline Sans Mono", monospace';
   ctx.fillText('EDITED STENCIL', 375, 214);
 }
 
@@ -382,7 +391,7 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
     img.onload = () => {
       setUploadedImageElement(img);
       setStatusMessage(
-        `Loaded "${file.name}" (${img.width}×${img.height}px). Switch between the filter tabs below to check for editing or compression anomalies.`
+        `Loaded "${file.name}" (${img.width}×${img.height}px). Switch between the filter tabs to check for editing or compression anomalies.`
       );
     };
     img.src = objectUrl;
@@ -393,14 +402,14 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
     if (!waybackQueryUrl.trim()) return;
     setIsCheckingWayback(true);
     setStatusMessage(
-      `Checking Internet Archive Wayback Machine for "${waybackQueryUrl}"...`
+      `Checking the Wayback Machine for "${waybackQueryUrl}"…`
     );
     try {
       const res = await checkWaybackArchivalHistory(waybackQueryUrl.trim());
       setWaybackResult(res);
       setStatusMessage(
         res.totalCaptures > 0
-          ? `Found ${res.totalCaptures} historical snapshots (First archived: ${res.earliestTimestamp}).`
+          ? `Found ${res.totalCaptures} historical snapshots (first archived: ${res.earliestTimestamp}).`
           : `No historical snapshots found in the Wayback Machine for this exact URL.`
       );
     } catch {
@@ -413,163 +422,123 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
   const activeExifTags = uploadedExifTags || currentSample?.exifTags || [];
 
   return (
-    <div className="space-y-6">
-      {/* Step 1: Photo Upload & Overview Header */}
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
-            Photo Authenticity &amp; Metadata Inspector
-          </h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Upload any image to check for hidden camera metadata (EXIF), detect
-            edited or pasted regions with Error Level Analysis (ELA), and check
-            when a URL first appeared online.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <label className="cursor-pointer flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0">
-            <Upload className="w-4 h-4" />
-            <span>Upload Photo to Inspect</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-          </label>
-
-          {uploadedImageElement && (
-            <button
-              type="button"
+    <div className="space-y-4">
+      <Panel
+        tag={MODULE_CATALOG.forensics.num}
+        title={MODULE_CATALOG.forensics.name}
+        description={`${MODULE_CATALOG.forensics.job} Upload an image, or examine the bundled sample scene. All computation stays in your browser.`}
+        actions={
+          <>
+            <Button
+              variant="solid"
+              size="sm"
+              icon={<BookmarkPlus className="h-3.5 w-3.5" />}
               onClick={() => {
-                setUploadedImageElement(null);
-                setUploadedExifTags(null);
-                setUploadedFileName(null);
-                setStatusMessage('Reset to sample test scene.');
+                onAppendLedger({
+                  module: 'forensics',
+                  targetLabel:
+                    uploadedFileName || currentSample?.title || 'Inspected Image',
+                  findingSummary: `Photo Forensics (${MODE_DESCRIPTIONS[inspectionMode].label}, Q=${jpegQuality}%): Mean Compression Difference=${elaMeanResidual}, High-Contrast Anomaly Pixels=${elaPeakRatio}%.`,
+                  sourceUrl: 'local://forensics/ela-inspector',
+                });
+                setStatusMessage(
+                  'Forensics result recorded to the evidence ledger.'
+                );
               }}
-              className="px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
             >
-              Use Sample Test Scene
-            </button>
-          )}
+              Record finding
+            </Button>
+            <label className="inline-flex h-7 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap rounded bg-accent px-2.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-strong">
+              <Upload className="h-3.5 w-3.5" />
+              <span>Upload photo</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+            {uploadedImageElement && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setUploadedImageElement(null);
+                  setUploadedExifTags(null);
+                  setUploadedFileName(null);
+                  setStatusMessage('Reset to the sample test scene.');
+                }}
+              >
+                Use sample scene
+              </Button>
+            )}
+          </>
+        }
+      >
+        {statusMessage && (
+          <NoticeBanner tone="info" onDismiss={() => setStatusMessage(null)}>
+            {statusMessage}
+          </NoticeBanner>
+        )}
+      </Panel>
 
-          <button
-            type="button"
-            onClick={() => {
-              onAppendLedger({
-                module: 'forensics',
-                targetLabel:
-                  uploadedFileName || currentSample?.title || 'Inspected Image',
-                findingSummary: `Photo Forensics (${MODE_DESCRIPTIONS[inspectionMode].label}, Q=${jpegQuality}%): Mean Compression Difference=${elaMeanResidual}, High-Contrast Anomaly Pixels=${elaPeakRatio}%.`,
-                sourceUrl: 'local://forensics/ela-inspector',
-              });
-              setStatusMessage(
-                'Saved photo forensics result to your Watchlist & Notes report.'
-              );
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
-          >
-            <BookmarkPlus className="w-3.5 h-3.5" />
-            <span>Save Finding to Notes</span>
-          </button>
-        </div>
-      </div>
-
-      {statusMessage && (
-        <div
-          role="status"
-          className="px-4 py-2.5 text-xs bg-sky-500/10 border border-sky-500/30 text-sky-800 dark:text-sky-200 rounded-lg flex items-center justify-between"
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+        <Panel
+          className="lg:col-span-7"
+          flush
+          title={uploadedFileName ? uploadedFileName : 'Sample scene — port terminal'}
+          description={MODE_DESCRIPTIONS[inspectionMode].helpText}
+          actions={
+            <SegmentedTabs
+              size="sm"
+              ariaLabel="Inspection filter"
+              tabs={(
+                [
+                  'ela_heatmap',
+                  'original_with_rois',
+                  'clone_vectors',
+                  'luminance_edge',
+                ] as const
+              ).map((modeId) => ({
+                id: modeId,
+                label: MODE_DESCRIPTIONS[modeId].label,
+              }))}
+              active={inspectionMode}
+              onChange={(mode) => setInspectionMode(mode)}
+            />
+          }
         >
-          <span>{statusMessage}</span>
-          <button
-            type="button"
-            onClick={() => setStatusMessage(null)}
-            className="text-xs underline ml-4 whitespace-nowrap shrink-0"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Step 2: Main 2-Column Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 7 Cols: Visual Filter Canvas & Simple Sliders */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
-                <Eye className="w-4 h-4 text-sky-500" />
-                <span>
-                  {uploadedFileName
-                    ? `Inspecting Uploaded Image: ${uploadedFileName}`
-                    : 'Sample Image: Port Terminal with Edited Labels'}
-                </span>
-              </div>
-
-              {/* 4 Plain-English Filter Mode Buttons */}
-              <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-lg">
-                {(
-                  [
-                    'ela_heatmap',
-                    'original_with_rois',
-                    'clone_vectors',
-                    'luminance_edge',
-                  ] as const
-                ).map((modeId) => (
-                  <button
-                    key={modeId}
-                    type="button"
-                    onClick={() => setInspectionMode(modeId)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                      inspectionMode === modeId
-                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    {MODE_DESCRIPTIONS[modeId].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {MODE_DESCRIPTIONS[inspectionMode].helpText}
-            </p>
-          </div>
-
-          {/* Canvas Viewport */}
-          <div className="p-4 bg-slate-950 flex flex-col items-center justify-center">
+          {/* Fixed dark viewport — the light table stays dark in both modes. */}
+          <div className="flex flex-col items-center justify-center bg-[#101418] p-4">
             <canvas
               ref={displayCanvasRef}
               onMouseMove={handleCanvasMouseMove}
               onMouseLeave={() => setLoupeInfo(null)}
               data-testid="forensic-ela-canvas"
-              className="w-full max-w-[640px] h-auto rounded-lg border border-slate-800 cursor-crosshair"
+              className="h-auto w-full max-w-[640px] cursor-crosshair rounded border border-line"
             />
-            <div className="mt-2.5 w-full max-w-[640px] flex items-center justify-between text-xs font-mono tabular-nums text-slate-400">
+            <div className="mt-2.5 flex w-full max-w-[640px] items-center justify-between font-mono text-xs tabular-nums text-ink-3">
               <span className="flex items-center gap-1.5">
-                <ZoomIn className="w-3.5 h-3.5 text-sky-400" />
+                <ZoomIn className="h-3.5 w-3.5" />
                 {loupeInfo ? (
-                  <span>
+                  <span className="text-ink-2">
                     Pixel (X={loupeInfo.x}, Y={loupeInfo.y}) · RGB({loupeInfo.r},{' '}
                     {loupeInfo.g}, {loupeInfo.b}) · {loupeInfo.hex}
                   </span>
                 ) : (
-                  <span>Hover over the image to inspect individual pixel colors</span>
+                  <span>Hover over the image to inspect individual pixels</span>
                 )}
               </span>
             </div>
           </div>
 
-          {/* Sensitivity Controls */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <div className="grid grid-cols-1 items-center gap-4 border-t border-line bg-well p-4 md:grid-cols-3">
             <div>
               <label
                 htmlFor="ela-quality"
-                className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
+                className="mb-1 block text-[11px] font-medium text-ink-2"
               >
-                Compression Comparison ({jpegQuality}%)
+                Compression comparison ({jpegQuality}%)
               </label>
               <input
                 id="ela-quality"
@@ -578,16 +547,16 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
                 max={96}
                 value={jpegQuality}
                 onChange={(e) => setJpegQuality(parseInt(e.target.value, 10))}
-                className="w-full accent-sky-500"
+                className="w-full accent-accent"
               />
             </div>
 
             <div>
               <label
                 htmlFor="ela-gain"
-                className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1"
+                className="mb-1 block text-[11px] font-medium text-ink-2"
               >
-                Highlight Brightness ({elaGain}×)
+                Highlight brightness ({elaGain}×)
               </label>
               <input
                 id="ela-gain"
@@ -596,64 +565,49 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
                 max={35}
                 value={elaGain}
                 onChange={(e) => setElaGain(parseInt(e.target.value, 10))}
-                className="w-full accent-rose-500"
+                className="w-full accent-danger"
               />
             </div>
 
-            <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-around font-mono tabular-nums text-xs">
+            <Well className="flex items-center justify-around p-2.5 font-mono text-xs tabular-nums">
               <div>
-                <div className="text-[11px] text-slate-500">Avg Difference</div>
-                <div className="font-bold text-sky-600 dark:text-sky-400">
-                  {elaMeanResidual}
-                </div>
+                <DataLabel>Avg difference</DataLabel>
+                <div className="font-semibold text-derived">{elaMeanResidual}</div>
               </div>
-              <div className="h-6 w-px bg-slate-200 dark:bg-slate-800" />
+              <div className="h-6 w-px bg-line" />
               <div>
-                <div className="text-[11px] text-slate-500">Edited Area</div>
-                <div className="font-bold text-rose-600 dark:text-rose-400">
-                  {elaPeakRatio}%
-                </div>
+                <DataLabel>Edited area</DataLabel>
+                <div className="font-semibold text-danger">{elaPeakRatio}%</div>
               </div>
-            </div>
+            </Well>
           </div>
-        </div>
+        </Panel>
 
-        {/* Right 5 Cols: Hidden File Metadata (EXIF) + Wayback Machine Checker */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Hidden Metadata (EXIF) Card */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 font-display">
-                <FileCode2 className="w-4 h-4 text-sky-500" />
-                <span>Hidden File Metadata (EXIF Headers)</span>
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Shows camera settings, software tags, or whether metadata was
-                stripped before sharing.
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden text-xs">
+        <div className="space-y-4 lg:col-span-5">
+          <Panel
+            title="Hidden file metadata (EXIF)"
+            description="Camera settings, software tags, or evidence that metadata was stripped before sharing."
+            bodyClassName="space-y-3"
+          >
+            <div className="divide-y divide-line overflow-hidden rounded border border-line text-xs">
               {activeExifTags.map((tag) => (
                 <div
                   key={`${tag.tagId}-${tag.name}`}
-                  className="p-3 bg-slate-50/50 dark:bg-slate-950/50 flex items-start justify-between gap-3"
+                  className="flex items-start justify-between gap-3 bg-well p-3"
                 >
-                  <div>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200">
-                      {tag.name}
-                    </div>
-                    <div className="text-slate-600 dark:text-slate-400 font-mono mt-0.5 break-all">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-ink">{tag.name}</div>
+                    <DataValue className="mt-0.5 block break-all text-ink-2">
                       {tag.value}
-                    </div>
+                    </DataValue>
                   </div>
                   <span
-                    className={`text-[11px] font-mono font-bold shrink-0 ${
+                    className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
                       tag.status === 'MISMATCH'
-                        ? 'text-rose-600 dark:text-rose-400'
+                        ? 'border-danger/40 bg-danger/10 text-danger'
                         : tag.status === 'STRIPPED'
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-emerald-600 dark:text-emerald-400'
+                        ? 'border-gap/40 bg-gap/10 text-gap'
+                        : 'border-live/35 bg-live/10 text-live'
                     }`}
                   >
                     {tag.status === 'MISMATCH'
@@ -668,82 +622,72 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
 
             {!uploadedImageElement && currentSample && (
               <div className="space-y-2 pt-1">
-                <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-rose-500" />
-                  <span>Flagged Regions in Sample Image</span>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-2">
+                  <Sliders className="h-3.5 w-3.5 text-ink-3" />
+                  <span>Flagged regions in sample image</span>
                 </div>
                 {currentSample.spliceRegions.map((roi, idx) => (
                   <div
                     key={idx}
-                    className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-800 dark:text-rose-200"
+                    className="rounded border border-danger/30 bg-danger/10 p-3 text-xs text-ink-2"
                   >
-                    <span className="font-bold mr-1.5">Region #{idx + 1}:</span>
+                    <span className="mr-1.5 font-semibold text-danger">
+                      Region #{idx + 1}:
+                    </span>
                     <span>{roi.description}</span>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </Panel>
 
-          {/* Internet Archive Wayback Machine URL Checker */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 font-display">
-                <Archive className="w-4 h-4 text-amber-500" />
-                <span>Webpage History Checker (Wayback Machine)</span>
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Enter any webpage or image URL to see when it was first archived
-                by the Internet Archive.
-              </p>
-            </div>
-
+          <Panel
+            title="Webpage history (Wayback Machine)"
+            description="See when a URL was first archived by the Internet Archive."
+            bodyClassName="space-y-3"
+          >
             <form onSubmit={handleWaybackCheck} className="flex gap-2">
-              <input
+              <TextField
                 type="text"
                 aria-label="URL to check in Wayback Machine"
                 value={waybackQueryUrl}
                 onChange={(e) => setWaybackQueryUrl(e.target.value)}
                 placeholder="https://example.com"
-                className="flex-1 px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                className="flex-1 font-mono text-xs"
               />
-              <button
+              <Button
                 type="submit"
+                variant="solid"
+                icon={<ScanSearch className="h-3.5 w-3.5" />}
                 disabled={isCheckingWayback}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
               >
-                <ScanSearch className="w-3.5 h-3.5" />
-                <span>{isCheckingWayback ? 'Checking...' : 'Check History'}</span>
-              </button>
+                {isCheckingWayback ? 'Checking…' : 'Check history'}
+              </Button>
             </form>
 
             {waybackResult && (
-              <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono tabular-nums space-y-1.5">
+              <Well className="space-y-1.5 p-3 font-mono text-xs tabular-nums">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Archived Snapshots:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  <DataLabel>Archived snapshots</DataLabel>
+                  <span className="font-semibold text-live">
                     {waybackResult.totalCaptures} captures
                   </span>
                 </div>
                 {waybackResult.earliestTimestamp && (
                   <div className="flex justify-between">
-                    <span className="text-slate-500">First Archived:</span>
-                    <span className="text-slate-900 dark:text-slate-100">
-                      {waybackResult.earliestTimestamp}
-                    </span>
+                    <DataLabel>First archived</DataLabel>
+                    <DataValue>{waybackResult.earliestTimestamp}</DataValue>
                   </div>
                 )}
                 {waybackResult.latestTimestamp && (
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Most Recent:</span>
-                    <span className="text-slate-900 dark:text-slate-100">
-                      {waybackResult.latestTimestamp}
-                    </span>
+                    <DataLabel>Most recent</DataLabel>
+                    <DataValue>{waybackResult.latestTimestamp}</DataValue>
                   </div>
                 )}
-              </div>
+              </Well>
             )}
-          </div>
+          </Panel>
         </div>
       </div>
     </div>

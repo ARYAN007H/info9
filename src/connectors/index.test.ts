@@ -10,7 +10,7 @@ import {
 test('registry passes zero-key integrity checks', () => {
   const problems = validateRegistry();
   assert.deepEqual(problems, [], `registry problems: ${problems.join('; ')}`);
-  assert.ok(listConnectors().length >= 8, 'expected at least 8 connectors');
+  assert.ok(listConnectors().length >= 12, 'expected at least 12 connectors');
 });
 
 test('connector ids are unique and lookups resolve', () => {

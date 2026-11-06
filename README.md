@@ -31,7 +31,8 @@ Most OSINT tooling is either a paid SaaS (Maltego, DomainTools), a pile of scatt
 | **02 · Dossier & Shell Topology** | Search legal entities worldwide, crawl GLEIF Level-2 ultimate-parent ownership chains, expand via Wikidata & OpenAlex, compute effective equity across multi-hop shells, detect circular ownership | GLEIF API, Wikidata, OpenAlex |
 | **03 · Threat Infrastructure** | Full passive recon on any domain: A/AAAA/MX/NS/TXT/CAA/DMARC, registrar & creation date (RDAP), subdomains from Certificate Transparency, open ports / CPEs / CVEs per IP, BGP origin & upstreams, live-probed typosquat lookalike permutations, cross-domain cluster analysis | Cloudflare DoH, RDAP, crt.sh, Shodan InternetDB, RIPEstat |
 | **04 · Media & Video Forensics** | In-browser DSP lab: Error Level Analysis, copy-move clone detection with displacement vectors, noise variance maps, JPEG ghost quality sweeps, 8× pixel loupe, live RGB histograms, EXIF integrity review | 100% client-side computation |
-| **05 · Sanctions & Evidence Ledger** | Name matching across scripts (Cyrillic/diacritic transliteration + Jaro-Winkler + Soundex + token-set) with Bayesian posterior scoring against sanctions/PEP records; every module finding lands in a hash-chained, tamper-evident evidence ledger with STIX 2.1 export | Bundled OFAC/EU/UN/UK sample dataset (live OpenSanctions connector on the roadmap) |
+| **05 · Identity & Usernames** | Sweep a handle across ~700 community-indexed sites (WhatsMyName dataset) with per-probe detection strings; hits ranked and flagged for visual verification; SSRF-hardened probe checking | WhatsMyName dataset (free, community-maintained) |
+| **06 · Sanctions & Evidence Ledger** | Name matching across scripts (Cyrillic/diacritic transliteration + Jaro-Winkler + Soundex + token-set) with Bayesian posterior scoring; **live screening against the real OFAC SDN list** (free Treasury CSV, parsed and cached server-side); every module finding lands in a hash-chained, tamper-evident evidence ledger with STIX 2.1 export | Live OFAC SDN CSV (U.S. Treasury) · bundled demo set for offline use |
 
 ## Architecture
 
@@ -126,11 +127,13 @@ Phase 2 — **connector architecture** *(in progress — core shipped)*
 - [x] Per-host rate limiting + TTL response cache honoring upstream policies
 - [ ] STIX 2.1 as canonical internal entity model across all connectors
 
-Phase 3 — **source breadth** (all free)
+Phase 3 — **source breadth** *(core shipped)*
 
-- [ ] Live OpenSanctions screening · HIBP k-anonymity breach checks · WhatsMyName username sweep
-- [ ] SEC EDGAR & Companies House · URLScan.io · AlienVault OTX
-- [ ] Email/phone recon, blockchain explorer pivots, reverse-image link builders
+- [x] Live OFAC SDN screening — the real U.S. Treasury list, zero keys (replaces synthetic-only screening)
+- [x] WhatsMyName username sweep across ~700 sites with SSRF-hardened probing
+- [x] URLScan.io, GitHub account recon, direct IP geolocation, Wayback history connectors
+- [ ] HIBP breach lookups (needs a key — will be optional like the vision module)
+- [ ] SEC EDGAR & Companies House · AlienVault OTX · email/phone recon
 
 Phase 4 — **the analysis layer**
 

@@ -16,6 +16,7 @@ import {
   Upload,
 } from 'lucide-react';
 import ProvenanceBadge from './ProvenanceBadge';
+import { MODULE_CATALOG } from './moduleCatalog';
 import type {
   CommonsGeoPhoto,
   InvestigationCase,
@@ -79,17 +80,17 @@ const TILE_URLS: Record<
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri World Imagery',
-    label: 'Satellite View',
+    label: 'Satellite',
   },
   osm: {
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '&copy; OpenStreetMap contributors',
-    label: 'Street Map',
+    label: 'Street map',
   },
   topo: {
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
     attribution: '&copy; OpenTopoMap (CC-BY-SA)',
-    label: 'Terrain Map',
+    label: 'Terrain',
   },
 };
 
@@ -279,7 +280,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     tileLayerRef.current.setUrl(TILE_URLS[tileMode].url);
   }, [tileMode]);
 
-  // Update Map Pin, Sun/Shadow Vectors, and Discovered Landmarks
+  // Update Map Pin, Sun/Shadow Vectors, and Discovered landmarks
   useEffect(() => {
     const map = mapInstanceRef.current;
     const group = vectorLayerGroupRef.current;
@@ -292,9 +293,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
 
     L.circleMarker([geoState.lat, geoState.lon], {
       radius: 9,
-      color: '#0ea5e9',
+      color: '#ff6b2c',
       weight: 3,
-      fillColor: '#38bdf8',
+      fillColor: '#ff8350',
       fillOpacity: 0.9,
     })
       .bindPopup(
@@ -312,7 +313,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         1.2
       );
       L.polyline([[geoState.lat, geoState.lon], sunEnd], {
-        color: '#f59e0b',
+        color: '#e5b454',
         weight: 3,
         dashArray: '6, 6',
       })
@@ -329,7 +330,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         color: '#06b6d4',
         weight: 4,
       })
-        .bindTooltip(`Shadow Direction (${geoState.measuredShadowAzimuthDeg}°)`)
+        .bindTooltip(`Shadow direction (${geoState.measuredShadowAzimuthDeg}°)`)
         .addTo(group);
     }
 
@@ -714,7 +715,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
 
   const handleVerifyWeather = async () => {
     setIsQueryingWeather(true);
-    setStatusMessage('Checking historical weather and terrain elevation...');
+    setStatusMessage('Checking historical weather and terrain elevation…');
     try {
       const weatherVerification = await fetchElevationAndWeatherVerification(
         geoState.lat,
@@ -763,13 +764,18 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Step 1: Universal Clue Intake Bar (Photo, Phone, IP, Address, or Coordinates) */}
-      <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
+      <div className="space-y-4 rounded-md border border-line bg-panel p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-display">
-              Geolocate Any Clue
-            </h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <div className="flex items-baseline gap-2.5">
+              <span className="signage text-[10px] font-semibold text-accent">
+                {MODULE_CATALOG.geolocation.num}
+              </span>
+              <h1 className="text-lg font-semibold text-ink">
+                {MODULE_CATALOG.geolocation.name}
+              </h1>
+            </div>
+            <p className="mt-1 text-sm text-ink-2">
               Submit whatever information you have — a <strong>photo</strong>,{' '}
               <strong>phone number</strong>, <strong>IP address</strong>,{' '}
               <strong>street/landmark name</strong>, or <strong>coordinates</strong>{' '}
@@ -780,10 +786,10 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
           <button
             type="button"
             onClick={handleSaveFinding}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 rounded px-3.5 py-2 text-xs font-semibold text-on-accent bg-accent transition-colors hover:bg-accent-strong whitespace-nowrap shrink-0"
           >
-            <BookmarkPlus className="w-3.5 h-3.5" />
-            <span>Save Location to Notes</span>
+            <BookmarkPlus className="h-3.5 w-3.5" />
+            <span>Record finding</span>
           </button>
         </div>
 
@@ -791,40 +797,40 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
           {/* Unified Text Clue Input (Phone, IP, Place, Coordinates) */}
           <form
             onSubmit={handleClueFormSubmit}
-            className="lg:col-span-8 flex flex-col justify-between p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3"
+            className="lg:col-span-8 flex flex-col justify-between p-4 border border-line bg-well rounded space-y-3"
           >
             <div>
               <label
                 htmlFor="universal-clue-input"
-                className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
+                className="block text-xs font-semibold text-ink-2 mb-1.5"
               >
-                Enter Phone Number, IP Address, Place Name, or Coordinates
+                Phone number, IP address, place name, or coordinates
               </label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="universal-clue-input"
                     type="text"
                     placeholder="e.g. +44 20 7946 0921, 8.8.8.8, Tower Bridge London, or 35.6586, 139.7454"
                     value={clueInput}
                     onChange={(e) => setClueInput(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-500"
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-line bg-panel rounded text-ink focus:outline-none focus:border-accent"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isLocating}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                  className="px-4 py-2 text-xs font-semibold text-on-accent bg-accent hover:bg-accent-strong rounded-lg transition-colors whitespace-nowrap shrink-0"
                 >
-                  {isLocating ? 'Locating...' : 'Locate Clue'}
+                  {isLocating ? 'Locating…' : 'Locate clue'}
                 </button>
               </div>
             </div>
 
             {/* 1-Click Example Clues for Easy Testing */}
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>Try a sample clue:</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
+              <span>Try:</span>
               <button
                 type="button"
                 onClick={() => {
@@ -832,7 +838,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   setClueInput(sample);
                   resolveAnyClue(sample);
                 }}
-                className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md text-slate-700 dark:text-slate-300 font-mono transition-colors whitespace-nowrap shrink-0"
+                className="px-2.5 py-1 border border-line bg-well hover:border-accent rounded-md text-ink-2 font-mono transition-colors whitespace-nowrap shrink-0"
               >
                 Phone: +44 20 7946 0921
               </button>
@@ -843,7 +849,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   setClueInput(sample);
                   resolveAnyClue(sample);
                 }}
-                className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md text-slate-700 dark:text-slate-300 font-mono transition-colors whitespace-nowrap shrink-0"
+                className="px-2.5 py-1 border border-line bg-well hover:border-accent rounded-md text-ink-2 font-mono transition-colors whitespace-nowrap shrink-0"
               >
                 Phone: +1 (415) 555-0192
               </button>
@@ -854,7 +860,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   setClueInput(sample);
                   resolveAnyClue(sample);
                 }}
-                className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md text-slate-700 dark:text-slate-300 font-mono transition-colors whitespace-nowrap shrink-0"
+                className="px-2.5 py-1 border border-line bg-well hover:border-accent rounded-md text-ink-2 font-mono transition-colors whitespace-nowrap shrink-0"
               >
                 IP: 8.8.8.8
               </button>
@@ -865,7 +871,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   setClueInput(sample);
                   resolveAnyClue(sample);
                 }}
-                className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md text-slate-700 dark:text-slate-300 font-mono transition-colors whitespace-nowrap shrink-0"
+                className="px-2.5 py-1 border border-line bg-well hover:border-accent rounded-md text-ink-2 font-mono transition-colors whitespace-nowrap shrink-0"
               >
                 Coords: 35.6586, 139.7454
               </button>
@@ -873,18 +879,18 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
           </form>
 
           {/* Upload Photo Clue Card */}
-          <label className="lg:col-span-4 cursor-pointer p-4 bg-slate-50 dark:bg-slate-950 border border-dashed border-slate-300 dark:border-slate-700 hover:border-sky-500 rounded-lg flex flex-col items-center justify-center text-center transition-colors">
-            <Camera className="w-6 h-6 text-sky-500 mb-1.5" />
-            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-              Upload a Photo to Geolocate
+          <label className="lg:col-span-4 cursor-pointer p-4 border border-dashed border-line-strong bg-well hover:border-accent rounded-lg flex flex-col items-center justify-center text-center transition-colors">
+            <Camera className="w-6 h-6 text-ink-3 mb-1.5" />
+            <span className="text-xs font-semibold text-ink">
+              Upload a photo to geolocate
             </span>
-            <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="mt-1 text-[11px] text-ink-3">
               Extracts EXIF metadata &amp; displays the image beside the map to
               match landmarks or shadows
             </span>
-            <span className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 bg-sky-500/15 rounded-md">
+            <span className="mt-2.5 inline-flex items-center gap-1.5 rounded border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-ink">
               <Upload className="w-3.5 h-3.5" />
-              <span>Choose Image (JPG/PNG)</span>
+              <span>Choose image (JPG/PNG)</span>
             </span>
             <input
               type="file"
@@ -899,7 +905,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         {statusMessage && (
           <div
             role="status"
-            className="px-4 py-2.5 text-xs bg-sky-500/10 border border-sky-500/30 text-sky-800 dark:text-sky-200 rounded-lg flex items-center justify-between"
+            className="px-4 py-2.5 text-xs rounded border border-line border-l-2 border-l-derived bg-well text-ink-2 flex items-center justify-between"
           >
             <span>{statusMessage}</span>
             <button
@@ -914,29 +920,29 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
 
         {/* Resolved Clue Breakdown Card (When user submits a Phone, IP, Photo, or Location) */}
         {resolvedClue && (
-          <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col md:flex-row gap-4 items-start justify-between">
+          <div className="p-4 border border-line bg-well rounded flex flex-col md:flex-row gap-4 items-start justify-between">
             {resolvedClue.photoPreviewUrl && (
               <img
                 src={resolvedClue.photoPreviewUrl}
                 alt="Uploaded geolocation clue"
                 referrerPolicy="no-referrer"
-                className="w-36 h-24 object-cover rounded-lg border border-slate-300 dark:border-slate-700 shrink-0"
+                className="w-36 h-24 object-cover rounded-lg border border-line-strong shrink-0"
               />
             )}
             <div className="flex-1 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  <h2 className="text-sm font-bold text-ink">
                     {resolvedClue.title}
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-ink-3">
                     {resolvedClue.subtitle}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setResolvedClue(null)}
-                  className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  className="text-xs text-ink-3 hover:text-ink"
                 >
                   Clear
                 </button>
@@ -945,12 +951,12 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                 {resolvedClue.details.map((item) => (
                   <div
                     key={item.label}
-                    className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded"
+                    className="p-2 border border-line bg-well rounded"
                   >
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="text-[11px] text-ink-3">
                       {item.label}
                     </div>
-                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 font-mono tabular-nums truncate mt-0.5">
+                    <div className="text-xs font-semibold text-ink font-mono tabular-nums truncate mt-0.5">
                       {item.value}
                     </div>
                   </div>
@@ -959,19 +965,19 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
             </div>
           </div>
         )}
-        {/* AI Photo Geolocation Panel (optional capability; output is DERIVED) */}
+        {/* AI photo geolocation Panel (optional capability; output is DERIVED) */}
         {resolvedClue?.type === 'photo' && (
-          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3">
+          <div className="p-4 border border-line bg-panel rounded space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-violet-500" />
-                  AI Photo Geolocation
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-900">
-                    HYPOTHESIS — NOT EVIDENCE
+                <h2 className="text-sm font-bold text-ink flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-accent" />
+                  AI photo geolocation
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-accent/40 bg-accent/10 text-accent">
+                    HYPOTHESIS · NOT EVIDENCE
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-ink-3 mt-0.5">
                   No GPS metadata? The vision model proposes candidate locations
                   from visual clues. Every candidate is an unverified hypothesis —
                   corroborate with the links and tools below.
@@ -981,14 +987,14 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                 type="button"
                 onClick={handleRunVisionGeolocation}
                 disabled={!photoPayload || isQueryingVision}
-                className="px-3.5 py-2 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                className="px-3.5 py-2 text-xs font-semibold text-on-accent bg-accent hover:bg-accent-strong disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0"
               >
-                {isQueryingVision ? 'Analyzing photo...' : 'Run AI Geolocation'}
+                {isQueryingVision ? 'Analyzing photo…' : 'Run AI geolocation'}
               </button>
             </div>
 
             {visionError && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+              <div className="p-3 border border-gap/40 bg-gap/10 rounded-lg text-xs text-gap">
                 <strong>AI geolocation unavailable:</strong> {visionError}
               </div>
             )}
@@ -997,38 +1003,38 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <ProvenanceBadge meta={visionResult.provenance} />
-                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  <span className="text-[11px] font-mono text-ink-3">
                     model: {visionResult.model}
                   </span>
                 </div>
                 {visionResult.candidates.map((candidate, idx) => (
                   <div
                     key={`${candidate.label}-${idx}`}
-                    className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2"
+                    className="p-3 border border-line bg-well rounded space-y-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <span className="text-xs font-bold text-ink">
                           #{idx + 1} {candidate.label}
                         </span>
-                        <span className="ml-2 text-[11px] font-mono tabular-nums text-slate-500">
+                        <span className="ml-2 text-[11px] font-mono tabular-nums text-ink-3">
                           {candidate.lat.toFixed(5)}, {candidate.lon.toFixed(5)}
                         </span>
                       </div>
                       <span
                         className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
                           candidate.confidencePercent >= 60
-                            ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                            ? 'bg-live/10 text-live'
                             : candidate.confidencePercent >= 30
-                            ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
-                            : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
+                            ? 'bg-gap/10 text-gap'
+                            : 'bg-danger/10 text-danger'
                         }`}
                       >
                         {candidate.confidencePercent}% confidence
                       </span>
                     </div>
                     {candidate.reasoning && (
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      <p className="text-[11px] text-ink-2">
                         {candidate.reasoning}
                       </p>
                     )}
@@ -1037,7 +1043,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                         {candidate.landmarks.map((lm) => (
                           <span
                             key={lm}
-                            className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900 text-[10px] font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+                            className="rounded border border-line bg-app px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
                           >
                             {lm}
                           </span>
@@ -1048,7 +1054,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                       <button
                         type="button"
                         onClick={() => handlePinVisionCandidate(candidate)}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors"
+                        className="px-2.5 py-1 text-[11px] font-semibold text-on-accent bg-accent hover:bg-accent-strong rounded-md transition-colors"
                       >
                         Pin on Map (then verify)
                       </button>
@@ -1056,7 +1062,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                         href={streetViewLink(candidate.lat, candidate.lon)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                        className="px-2.5 py-1 text-[11px] font-medium border border-line bg-well hover:border-accent rounded-md transition-colors"
                       >
                         Street View ↗
                       </a>
@@ -1064,7 +1070,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                         href={satelliteLink(candidate.lat, candidate.lon)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                        className="px-2.5 py-1 text-[11px] font-medium border border-line bg-well hover:border-accent rounded-md transition-colors"
                       >
                         Satellite ↗
                       </a>
@@ -1074,8 +1080,8 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               </div>
             )}
 
-            <div className="pt-1 border-t border-slate-200 dark:border-slate-800">
-              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 pb-1">
+            <div className="pt-1 border-t border-line">
+              <div className="text-[11px] font-semibold text-ink-2 pb-1">
                 Human verification (zero-key reverse image search — upload the
                 photo yourself):
               </div>
@@ -1087,7 +1093,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                     target="_blank"
                     rel="noopener noreferrer"
                     title={engine.note}
-                    className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-violet-500 rounded-md transition-colors"
+                    className="px-2.5 py-1 text-[11px] font-medium border border-line bg-well hover:border-accent rounded-md transition-colors"
                   >
                     {engine.name} ↗
                   </a>
@@ -1096,16 +1102,16 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
             </div>
 
             {/* Automated zero-key matching against geolocated public photos */}
-            <div className="pt-1 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            <div className="pt-1 border-t border-line space-y-2">
               <div>
-                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                  Automated Matching — Wikimedia Commons geolocated photos
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                <h3 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-live" />
+                  Automated matching — Wikimedia Commons geolocated photos
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-live/35 bg-live/10 text-live">
                     ZERO-KEY · NO REDIRECT
                   </span>
                 </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-[11px] text-ink-3 mt-0.5">
                   Describe the scene (place + landmarks). The engine searches
                   Commons for geotagged photos of the same subject and ranks
                   them by perceptual similarity to your upload — a strong match
@@ -1121,33 +1127,33 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                     if (e.key === 'Enter') handleRunCommonsMatch();
                   }}
                   placeholder="e.g. ginkgo avenue Marunouchi Tokyo skyscrapers"
-                  className="flex-1 px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                  className="flex-1 px-3 py-2 text-xs font-mono border border-line bg-well rounded text-ink"
                 />
                 <button
                   type="button"
                   onClick={handleRunCommonsMatch}
                   disabled={!resolvedClue?.photoPreviewUrl || !commonsTerms.trim() || isCorroborating}
-                  className="px-3 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap"
+                  className="px-3 py-2 text-xs font-semibold text-on-accent bg-accent hover:bg-accent-strong disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap"
                 >
-                  {isCorroborating ? 'Matching...' : 'Match Geolocated Photos'}
+                  {isCorroborating ? 'Matching…' : 'Match geolocated photos'}
                 </button>
               </div>
 
               {commonsError && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                <div className="p-3 border border-gap/40 bg-gap/10 rounded-lg text-xs text-gap">
                   <strong>Commons matching error:</strong> {commonsError}
                 </div>
               )}
 
               {commonsResult && (
                 <div className="space-y-2">
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                  <div className="text-[11px] text-ink-3 font-mono">
                     {commonsResult.matches.length} of{' '}
                     {commonsResult.candidatesExamined} keyword matches carried GPS
                     metadata · query dHash {commonsResult.queryHash.slice(0, 8)}…
                   </div>
                   {commonsResult.matches.length === 0 ? (
-                    <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-500 dark:text-slate-400">
+                    <div className="p-3 border border-line bg-well rounded text-xs text-ink-3">
                       No geotagged Commons photos matched those terms. Refine the
                       keywords — e.g. add the district or landmark name.
                     </div>
@@ -1155,21 +1161,21 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                     commonsResult.matches.slice(0, 6).map((match) => (
                       <div
                         key={match.photo.title}
-                        className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col sm:flex-row gap-3 items-start"
+                        className="p-3 border border-line bg-well rounded flex flex-col sm:flex-row gap-3 items-start"
                       >
                         <div className="flex gap-2 shrink-0">
                           {resolvedClue?.photoPreviewUrl && (
                             <img
                               src={resolvedClue.photoPreviewUrl}
                               alt="Uploaded query photo"
-                              className="w-24 h-16 object-cover rounded border border-slate-300 dark:border-slate-700"
+                              className="w-24 h-16 object-cover rounded border border-line-strong"
                             />
                           )}
                           <img
                             src={match.photo.thumbUrl}
                             alt={match.photo.title}
                             referrerPolicy="no-referrer"
-                            className="w-24 h-16 object-cover rounded border border-slate-300 dark:border-slate-700"
+                            className="w-24 h-16 object-cover rounded border border-line-strong"
                           />
                         </div>
                         <div className="flex-1 min-w-0 space-y-1.5">
@@ -1177,34 +1183,34 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                             <span
                               className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${
                                 match.similarityPercent >= 70
-                                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                                  ? 'bg-live/10 text-live'
                                   : match.similarityPercent >= 55
-                                  ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
-                                  : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                                  ? 'bg-gap/10 text-gap'
+                                  : 'bg-well text-ink-3'
                               }`}
                             >
                               {match.similarityPercent}% visual match
                             </span>
-                            <span className="text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
+                            <span className="text-[11px] font-mono tabular-nums text-ink-2">
                               {match.photo.lat.toFixed(5)}, {match.photo.lon.toFixed(5)}
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-700 dark:text-slate-300 truncate">
+                          <div className="text-[11px] text-ink-2 truncate">
                             {match.photo.title}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             <button
                               type="button"
                               onClick={() => handlePinCommonsMatch(match.photo)}
-                              className="px-2.5 py-1 text-[11px] font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors"
+                              className="px-2.5 py-1 text-[11px] font-semibold text-on-accent bg-accent hover:bg-accent-strong rounded-md transition-colors"
                             >
-                              Pin These Coordinates
+                              Pin these coordinates
                             </button>
                             <a
                               href={match.photo.descriptionUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                              className="px-2.5 py-1 text-[11px] font-medium border border-line bg-well hover:border-accent rounded-md transition-colors"
                             >
                               Commons page ↗
                             </a>
@@ -1223,14 +1229,14 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
       {/* Step 2: Interactive Map (Left 7 cols) + Guided Verification Tools (Right 5 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left 7 Cols: Interactive Map */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div className="lg:col-span-7 border border-line bg-panel rounded-md flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-line flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                <MapPin className="w-4 h-4 text-sky-500 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink truncate">
+                <MapPin className="w-4 h-4 text-ink-3 shrink-0" />
                 <span className="truncate">{geoState.locationLabel}</span>
               </div>
-              <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              <div className="text-[11px] font-mono tabular-nums text-ink-3">
                 Lat: {geoState.lat.toFixed(5)}° · Lon: {geoState.lon.toFixed(5)}° ·
                 Elevation:{' '}
                 {geoState.weatherVerification?.elevationMeters != null
@@ -1239,7 +1245,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-lg">
+            <div className="flex items-center gap-1 p-0.5 rounded border border-line bg-app">
               {(['satellite', 'osm', 'topo'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -1247,8 +1253,8 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   onClick={() => setTileMode(mode)}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
                     tileMode === mode
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      ? 'bg-well text-ink'
+                      : 'text-ink-2 hover:text-ink'
                   }`}
                 >
                   {TILE_URLS[mode].label}
@@ -1265,7 +1271,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
             />
           </div>
 
-          <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="px-4 py-2.5 border-t border-line bg-well flex items-center justify-between text-xs text-ink-3">
             <span>Tip: Click anywhere on the map to move the pin and look up the address</span>
             <span className="font-mono tabular-nums">
               {geoState.landmarks.length} nearby pins
@@ -1274,41 +1280,41 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         </div>
 
         {/* Right 5 Cols: Clean 2-Tab Verification Assistant */}
-        <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+        <div className="lg:col-span-5 border border-line bg-panel rounded-md p-5 flex flex-col justify-between">
           <div className="space-y-4">
             {/* Segmented Tab Switcher */}
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-lg">
+            <div className="flex items-center gap-1 p-0.5 rounded border border-line bg-app">
               <button
                 type="button"
                 onClick={() => setActiveTab('landmarks')}
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'landmarks'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-well text-ink'
+                    : 'text-ink-2 hover:text-ink'
                 }`}
               >
-                1. Nearby Landmarks
+                Nearby landmarks
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('sun_shadow')}
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'sun_shadow'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-well text-ink'
+                    : 'text-ink-2 hover:text-ink'
                 }`}
               >
-                2. Sun &amp; Shadow Time
+                Sun &amp; shadow time
               </button>
             </div>
 
             {activeTab === 'landmarks' ? (
               <div className="space-y-4">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Find Matching Landmarks Around This Pin
+                  <h2 className="text-sm font-bold text-ink">
+                    Find matching landmarks around this pin
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 text-xs text-ink-3">
                     Scan OpenStreetMap within 2.5 km of the map pin to locate
                     power towers, railway crossings, storage tanks, or antennas
                     visible in your photo.
@@ -1316,13 +1322,13 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                 </div>
 
                 {/* Optional 2-Clue Filter */}
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3">
+                <div className="p-3.5 border border-line bg-well rounded space-y-3">
                   <div>
                     <label
                       htmlFor="primary-landmark-select"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
-                      Primary Background Clue (Optional Filter)
+                      Primary background clue (optional filter)
                     </label>
                     <select
                       id="primary-landmark-select"
@@ -1330,7 +1336,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                       onChange={(e) =>
                         setPrimaryFeatureIdx(parseInt(e.target.value, 10))
                       }
-                      className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-2.5 py-1.5 text-xs border border-line bg-panel rounded text-ink"
                     >
                       {LANDMARK_CLUE_TYPES.map((item, idx) => (
                         <option key={item.featureType} value={idx}>
@@ -1343,9 +1349,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   <div>
                     <label
                       htmlFor="secondary-landmark-select"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
-                      Near a Second Clue? (Optional Intersection)
+                      Near a second clue? (optional intersection)
                     </label>
                     <select
                       id="secondary-landmark-select"
@@ -1353,9 +1359,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                       onChange={(e) =>
                         setSecondaryFeatureIdx(parseInt(e.target.value, 10))
                       }
-                      className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-2.5 py-1.5 text-xs border border-line bg-panel rounded text-ink"
                     >
-                      <option value={-1}>Any — Scan all nearby landmarks</option>
+                      <option value={-1}>Any — scan all nearby landmarks</option>
                       {LANDMARK_CLUE_TYPES.map((item, idx) => (
                         <option key={item.featureType} value={idx}>
                           Must be near: {item.label}
@@ -1368,29 +1374,29 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                     type="button"
                     onClick={handleScanNearbyLandmarks}
                     disabled={isQueryingOverpass}
-                    className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                    className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-on-accent bg-accent hover:bg-accent-strong rounded-lg transition-colors whitespace-nowrap shrink-0"
                   >
                     <Radar className="w-3.5 h-3.5" />
                     <span>
                       {isQueryingOverpass
-                        ? 'Scanning OpenStreetMap...'
-                        : 'Scan Nearby Landmarks (2.5 km)'}
+                        ? 'Scanning OpenStreetMap…'
+                        : 'Scan nearby landmarks (2.5 km)'}
                     </span>
                   </button>
                 </div>
 
-                {/* Discovered Landmarks List */}
+                {/* Discovered landmarks List */}
                 <div>
-                  <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    <span>Discovered Landmarks</span>
-                    <span className="font-mono tabular-nums text-slate-500">
+                  <div className="flex items-center justify-between text-xs font-semibold text-ink-2 mb-2">
+                    <span>Discovered landmarks</span>
+                    <span className="font-mono tabular-nums text-ink-3">
                       {geoState.landmarks.length} found
                     </span>
                   </div>
 
                   {geoState.landmarks.length === 0 ? (
-                    <div className="p-4 text-center bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-500 dark:text-slate-400">
-                      Click <strong>&ldquo;Scan Nearby Landmarks&rdquo;</strong>{' '}
+                    <div className="p-4 text-center border border-line bg-well rounded text-xs text-ink-3">
+                      Click <strong>&ldquo;Scan nearby landmarks&rdquo;</strong>{' '}
                       above to list notable structures around the current map pin.
                     </div>
                   ) : (
@@ -1407,18 +1413,18 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                               locationLabel: lm.name,
                             }))
                           }
-                          className="w-full p-2.5 text-left bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-lg transition-colors flex items-center justify-between gap-2"
+                          className="w-full p-2.5 text-left border border-line bg-well hover:border-accent rounded-lg transition-colors flex items-center justify-between gap-2"
                         >
                           <div className="min-w-0">
-                            <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                            <div className="text-xs font-semibold text-ink truncate">
                               {lm.name}
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
+                            <div className="text-[11px] text-ink-3 font-mono">
                               {lm.category.replace(/_/g, ' ')} · {lm.lat.toFixed(4)},{' '}
                               {lm.lon.toFixed(4)}
                             </div>
                           </div>
-                          <span className="text-xs font-mono tabular-nums font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <span className="text-xs font-mono tabular-nums font-semibold text-ink-2 shrink-0">
                             {lm.distanceMeters}m
                           </span>
                         </button>
@@ -1431,10 +1437,10 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               /* Tab 2: Sun, Shadow & Weather Calculator */
               <div className="space-y-4">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Estimate Photo Capture Time from Shadows
+                  <h2 className="text-sm font-bold text-ink">
+                    Estimate photo capture time from shadows
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 text-xs text-ink-3">
                     Enter the date and approximate height/shadow length of an
                     object in the photo to find when the sun was at that angle.
                   </p>
@@ -1444,9 +1450,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   <div>
                     <label
                       htmlFor="chrono-date"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
-                      Photo Date
+                      Photo date
                     </label>
                     <input
                       id="chrono-date"
@@ -1458,16 +1464,16 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                           dateIso: e.target.value,
                         }))
                       }
-                      className="w-full px-2.5 py-1.5 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono border border-line bg-well rounded text-ink"
                     />
                   </div>
 
                   <div>
                     <label
                       htmlFor="chrono-azimuth"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
-                      Shadow Direction ({geoState.measuredShadowAzimuthDeg}°)
+                      Shadow direction ({geoState.measuredShadowAzimuthDeg}°)
                     </label>
                     <input
                       id="chrono-azimuth"
@@ -1482,14 +1488,14 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                           measuredShadowAzimuthDeg: parseFloat(e.target.value),
                         }))
                       }
-                      className="w-full accent-sky-500 mt-1.5"
+                      className="w-full accent-accent mt-1.5"
                     />
                   </div>
 
                   <div>
                     <label
                       htmlFor="chrono-height"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
                       Object Height ({geoState.objectHeightMeters} m)
                     </label>
@@ -1509,14 +1515,14 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                           ),
                         }))
                       }
-                      className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums border border-line bg-well rounded text-ink"
                     />
                   </div>
 
                   <div>
                     <label
                       htmlFor="chrono-shadow"
-                      className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1"
+                      className="block text-[11px] font-medium text-ink-2 mb-1"
                     >
                       Shadow Length ({geoState.shadowLengthMeters} m)
                     </label>
@@ -1536,24 +1542,24 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                           ),
                         }))
                       }
-                      className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                      className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums border border-line bg-well rounded text-ink"
                     />
                   </div>
                 </div>
 
                 {/* Estimated Time Windows */}
-                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
+                <div className="p-3 border border-line bg-well rounded space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="font-semibold text-ink-2">
                       Estimated Capture Time
                     </span>
-                    <span className="font-mono tabular-nums text-sky-600 dark:text-sky-400">
+                    <span className="font-mono tabular-nums text-ink-2">
                       Sun Angle: {shadowMetrics.elevationDeg}°
                     </span>
                   </div>
 
                   {chronoSolution.bestMatches.length === 0 ? (
-                    <div className="text-xs text-amber-700 dark:text-amber-300">
+                    <div className="text-xs text-gap">
                       No exact sun match for this shadow angle on {geoState.dateIso}.
                       Try adjusting the shadow direction slider above.
                     </div>
@@ -1564,16 +1570,16 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                           key={match.utcTimeFormatted}
                           type="button"
                           onClick={() => setSelectedUtcHour(match.utcHoursDecimal)}
-                          className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded flex items-center justify-between text-xs font-mono tabular-nums"
+                          className="w-full p-2 border border-line bg-well rounded flex items-center justify-between text-xs font-mono tabular-nums"
                         >
                           <div>
-                            <span className="font-bold text-sky-600 dark:text-sky-400">
+                            <span className="font-bold text-ink-2">
                               {match.utcTimeFormatted}
                             </span>
-                            <span className="mx-1.5 text-slate-400">·</span>
+                            <span className="mx-1.5 text-ink-3">·</span>
                             <span>{match.localSolarTimeFormatted}</span>
                           </div>
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                          <span className="text-live font-bold">
                             {match.confidencePercent}% Match
                           </span>
                         </button>
@@ -1583,19 +1589,19 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                 </div>
 
                 {/* Historical Weather Verification */}
-                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between gap-2">
+                <div className="p-3 border border-line bg-well rounded flex items-center justify-between gap-2">
                   <div className="text-xs min-w-0">
-                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    <div className="font-semibold text-ink">
                       Weather on {geoState.dateIso}
                     </div>
                     {geoState.weatherVerification ? (
-                      <div className="text-[11px] text-slate-500 font-mono tabular-nums">
+                      <div className="text-[11px] text-ink-3 font-mono tabular-nums">
                         Temp: {geoState.weatherVerification.minTempC}°C –{' '}
                         {geoState.weatherVerification.maxTempC}°C · Cloud Cover:{' '}
                         {geoState.weatherVerification.cloudCoverMeanPercent}%
                       </div>
                     ) : (
-                      <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                      <div className="text-[11px] text-gap">
                         No data recorded — run a live check (info9 shows gaps, not
                         guesses)
                       </div>
@@ -1605,9 +1611,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                     type="button"
                     onClick={handleVerifyWeather}
                     disabled={isQueryingWeather}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors whitespace-nowrap shrink-0"
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-line bg-well hover:border-accent rounded-md transition-colors whitespace-nowrap shrink-0"
                   >
-                    <CloudSun className="w-3.5 h-3.5 text-amber-500" />
+                    <CloudSun className="w-3.5 h-3.5 text-gap" />
                     <span>
                       {isQueryingWeather ? 'Checking...' : 'Check Weather'}
                     </span>
@@ -1617,7 +1623,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
             )}
           </div>
 
-          <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <div className="pt-4 mt-4 border-t border-line text-xs text-ink-3 flex items-center justify-between">
             <span>Sources: OpenStreetMap · Nominatim · IPWhois · Open-Meteo</span>
           </div>
         </div>
