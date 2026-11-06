@@ -1,4 +1,5 @@
 import type {
+  CommonsGeoPhoto,
   DemRadialPoint,
   DnsTwistPermutation,
   GleifParentTransformResult,
@@ -929,6 +930,71 @@ export async function expandGleifParentTransform(
     discoveredEdge,
     provenance: makeLiveProvenance('GLEIF Level-2 Relationship Record'),
   };
+}
+
+/**
+ * 7. Wikimedia Commons Geolocated Photo Search (Zero API Key)
+ *
+ * Searches Commons for photos matching keywords and keeps only files that
+ * carry GPS coordinates in their metadata. Matching the uploaded photo's
+ * perceptual hash against these results lets the engine PROPOSE coordinates
+ * with zero keys and zero redirects.
+ */
+/** Pure extraction/filtering of the Commons API response — unit-tested. */
+export function parseCommonsGeoPhotoResponse(json: unknown): CommonsGeoPhoto[] {
+  const pages = (json as { query?: { pages?: Record<string, unknown> } })?.query?.pages;
+  if (!pages || typeof pages !== 'object') return [];
+  const out: CommonsGeoPhoto[] = [];
+  for (const page of Object.values(pages)) {
+    const p = page as {
+      title?: unknown;
+      imageinfo?: Array<{
+        thumburl?: unknown;
+        descriptionurl?: unknown;
+        extmetadata?: Record<string, { value?: unknown }>;
+      }>;
+    };
+    const info = Array.isArray(p.imageinfo) ? p.imageinfo[0] : undefined;
+    if (!info) continue;
+    const gpsLat = info.extmetadata?.GPSLatitude?.value;
+    const gpsLon = info.extmetadata?.GPSLongitude?.value;
+    const lat = Number(gpsLat);
+    const lon = Number(gpsLon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
+    if (typeof info.thumburl !== 'string' || !info.thumburl) continue;
+    out.push({
+      title: typeof p.title === 'string' ? p.title : 'Untitled Commons file',
+      thumbUrl: info.thumburl,
+      descriptionUrl:
+        typeof info.descriptionurl === 'string'
+          ? info.descriptionurl
+          : 'https://commons.wikimedia.org',
+      lat,
+      lon,
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+export async function searchCommonsGeolocatedPhotos(
+  query: string
+): Promise<{ results: CommonsGeoPhoto[]; candidatesExamined: number }> {
+  const url =
+    `https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*` +
+    `&generator=search&gsrsearch=${encodeURIComponent(query)}` +
+    `&gsrnamespace=6&gsrlimit=30&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=420`;
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error(`Wikimedia Commons search returned HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  const pages = (json as { query?: { pages?: Record<string, unknown> } })?.query?.pages;
+  const candidatesExamined = pages ? Object.keys(pages).length : 0;
+  return { results: parseCommonsGeoPhotoResponse(json), candidatesExamined };
 }
 
 /**

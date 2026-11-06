@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import ProvenanceBadge from './ProvenanceBadge';
 import type {
+  CommonsGeoPhoto,
   InvestigationCase,
   OverpassConstraintClause,
   OverpassLandmark,
@@ -36,7 +37,9 @@ import {
   geolocatePhotoViaVision,
   queryOverpassLandmarks,
   reverseGeocodeNominatim,
+  searchCommonsGeolocatedPhotos,
 } from '../services/osintApis';
+import { corroborateWithCommons, type CommonsCorroborationResult } from '../services/photoCorroborate';
 import {
   classifyGeolocationClue,
   type ParsedPhoneClue,
@@ -163,6 +166,11 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     null
   );
   const [visionError, setVisionError] = useState<string | null>(null);
+  const [commonsTerms, setCommonsTerms] = useState('');
+  const [isCorroborating, setIsCorroborating] = useState(false);
+  const [commonsResult, setCommonsResult] =
+    useState<CommonsCorroborationResult | null>(null);
+  const [commonsError, setCommonsError] = useState<string | null>(null);
 
   // Simple 2-clue landmark filter
   const [primaryFeatureIdx, setPrimaryFeatureIdx] = useState<number>(0);
@@ -541,11 +549,61 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
       );
       setVisionResult(null);
       setVisionError(null);
+      setCommonsResult(null);
+      setCommonsError(null);
+      setCommonsTerms('');
       setStatusMessage(
         `Loaded photo "${file.name}" (${img.width}×${img.height}px). Run AI geolocation below, or use the Nearby Landmarks / Sun & Shadow tools on the right.`
       );
     };
     img.src = objectUrl;
+  };
+
+  const handleRunCommonsMatch = async () => {
+    if (!resolvedClue?.photoPreviewUrl || !commonsTerms.trim() || isCorroborating) return;
+    setIsCorroborating(true);
+    setCommonsError(null);
+    setCommonsResult(null);
+    setStatusMessage('Matching the photo against geolocated Wikimedia Commons images...');
+    try {
+      const result = await corroborateWithCommons(
+        commonsTerms.trim(),
+        resolvedClue.photoPreviewUrl
+      );
+      setCommonsResult(result);
+      if (result.matches.length === 0) {
+        setStatusMessage(
+          `Commons returned ${result.candidatesExamined} keyword matches but none carried GPS metadata. Refine the terms or use the reverse-search links.`
+        );
+      } else {
+        const best = result.matches[0];
+        setStatusMessage(
+          `Found ${result.matches.length} geolocated Commons photos — best perceptual match ${best.similarityPercent}% at ${best.photo.lat.toFixed(5)}, ${best.photo.lon.toFixed(5)}. Compare the thumbnails before pinning.`
+        );
+      }
+    } catch (err) {
+      setCommonsError(
+        err instanceof Error ? err.message : 'Commons matching failed'
+      );
+      setStatusMessage('Commons matching failed — see the notice in the photo panel.');
+    } finally {
+      setIsCorroborating(false);
+    }
+  };
+
+  const handlePinCommonsMatch = async (photo: CommonsGeoPhoto) => {
+    const address = await reverseGeocodeNominatim(photo.lat, photo.lon);
+    onUpdateGeoState((prev) => ({
+      ...prev,
+      lat: photo.lat,
+      lon: photo.lon,
+      locationLabel: photo.title.replace(/\.(jpg|jpeg|png)$/i, ''),
+      weatherVerification: null,
+      landmarks: [],
+    }));
+    setStatusMessage(
+      `Pinned Commons photo location (${photo.lat.toFixed(5)}, ${photo.lon.toFixed(5)}) — nearest address: ${address}. Compare the two photos side by side before saving to the ledger.`
+    );
   };
 
   const handleRunVisionGeolocation = async () => {
@@ -1035,6 +1093,128 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   </a>
                 ))}
               </div>
+            </div>
+
+            {/* Automated zero-key matching against geolocated public photos */}
+            <div className="pt-1 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                  Automated Matching — Wikimedia Commons geolocated photos
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                    ZERO-KEY · NO REDIRECT
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Describe the scene (place + landmarks). The engine searches
+                  Commons for geotagged photos of the same subject and ranks
+                  them by perceptual similarity to your upload — a strong match
+                  pins real coordinates without any external service.
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={commonsTerms}
+                  onChange={(e) => setCommonsTerms(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRunCommonsMatch();
+                  }}
+                  placeholder="e.g. ginkgo avenue Marunouchi Tokyo skyscrapers"
+                  className="flex-1 px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                />
+                <button
+                  type="button"
+                  onClick={handleRunCommonsMatch}
+                  disabled={!resolvedClue?.photoPreviewUrl || !commonsTerms.trim() || isCorroborating}
+                  className="px-3 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {isCorroborating ? 'Matching...' : 'Match Geolocated Photos'}
+                </button>
+              </div>
+
+              {commonsError && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                  <strong>Commons matching error:</strong> {commonsError}
+                </div>
+              )}
+
+              {commonsResult && (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    {commonsResult.matches.length} of{' '}
+                    {commonsResult.candidatesExamined} keyword matches carried GPS
+                    metadata · query dHash {commonsResult.queryHash.slice(0, 8)}…
+                  </div>
+                  {commonsResult.matches.length === 0 ? (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-500 dark:text-slate-400">
+                      No geotagged Commons photos matched those terms. Refine the
+                      keywords — e.g. add the district or landmark name.
+                    </div>
+                  ) : (
+                    commonsResult.matches.slice(0, 6).map((match) => (
+                      <div
+                        key={match.photo.title}
+                        className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col sm:flex-row gap-3 items-start"
+                      >
+                        <div className="flex gap-2 shrink-0">
+                          {resolvedClue?.photoPreviewUrl && (
+                            <img
+                              src={resolvedClue.photoPreviewUrl}
+                              alt="Uploaded query photo"
+                              className="w-24 h-16 object-cover rounded border border-slate-300 dark:border-slate-700"
+                            />
+                          )}
+                          <img
+                            src={match.photo.thumbUrl}
+                            alt={match.photo.title}
+                            referrerPolicy="no-referrer"
+                            className="w-24 h-16 object-cover rounded border border-slate-300 dark:border-slate-700"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                match.similarityPercent >= 70
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                                  : match.similarityPercent >= 55
+                                  ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
+                                  : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {match.similarityPercent}% visual match
+                            </span>
+                            <span className="text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
+                              {match.photo.lat.toFixed(5)}, {match.photo.lon.toFixed(5)}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-700 dark:text-slate-300 truncate">
+                            {match.photo.title}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handlePinCommonsMatch(match.photo)}
+                              className="px-2.5 py-1 text-[11px] font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors"
+                            >
+                              Pin These Coordinates
+                            </button>
+                            <a
+                              href={match.photo.descriptionUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                            >
+                              Commons page ↗
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

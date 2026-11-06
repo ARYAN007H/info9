@@ -58,6 +58,15 @@ export interface VisionGeolocationResult {
   provenance: ProvenanceMeta;
 }
 
+/** A Wikimedia Commons photo that carries GPS coordinates in its metadata. */
+export interface CommonsGeoPhoto {
+  title: string;
+  thumbUrl: string;
+  descriptionUrl: string;
+  lat: number;
+  lon: number;
+}
+
 /**
  * A heuristic score whose every contributing factor is disclosed.
  * Computed by src/utils/riskScore.ts — a triage aid, not a verdict.
