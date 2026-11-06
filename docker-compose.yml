@@ -1,0 +1,11 @@
+services:
+  info9:
+    build: .
+    image: info9:latest
+    container_name: info9
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+    restart: unless-stopped

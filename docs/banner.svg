@@ -1,0 +1,56 @@
+<svg width="1200" height="280" viewBox="0 0 1200 280" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="info9 — Argon OSINT Workbench">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="1" opacity="0.55"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F172A" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="280" fill="#090D16"/>
+  <rect width="1200" height="280" fill="url(#grid)"/>
+  <rect width="1200" height="280" fill="url(#fade)"/>
+
+  <!-- crosshair reticle -->
+  <g stroke="#38BDF8" stroke-width="1.5" opacity="0.85">
+    <circle cx="140" cy="140" r="66" fill="none" stroke-dasharray="6 6"/>
+    <circle cx="140" cy="140" r="44" fill="none" opacity="0.6"/>
+    <line x1="140" y1="52" x2="140" y2="98"/>
+    <line x1="140" y1="182" x2="140" y2="228"/>
+    <line x1="52" y1="140" x2="98" y2="140"/>
+    <line x1="182" y1="140" x2="228" y2="140"/>
+    <circle cx="140" cy="140" r="4" fill="#38BDF8" stroke="none"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#64748B">
+    <text x="226" y="66">37.7749° N</text>
+    <text x="226" y="222">122.4194° W</text>
+  </g>
+
+  <!-- wordmark -->
+  <text x="300" y="150" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="104" font-weight="700" letter-spacing="2" fill="#F1F5F9">info<tspan fill="url(#accent)">9</tspan></text>
+
+  <!-- subtitle -->
+  <text x="305" y="196" font-family="'Public Sans', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="600" letter-spacing="9" fill="#94A3B8">ARGON OSINT WORKBENCH</text>
+
+  <!-- tag chips -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600">
+    <rect x="305" y="216" width="118" height="28" rx="4" fill="#0F172A" stroke="#1E293B"/>
+    <text x="321" y="235" fill="#38BDF8">100% ZERO-KEY</text>
+    <rect x="433" y="216" width="122" height="28" rx="4" fill="#0F172A" stroke="#1E293B"/>
+    <text x="449" y="235" fill="#38BDF8">FREE &amp; OPEN</text>
+    <rect x="565" y="216" width="140" height="28" rx="4" fill="#0F172A" stroke="#1E293B"/>
+    <text x="581" y="235" fill="#38BDF8">EVIDENCE-FIRST</text>
+  </g>
+
+  <!-- status line -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#475569">
+    <text x="1000" y="252" text-anchor="end">GEO · DOSSIER · INFRA · FORENSICS · SANCTIONS</text>
+  </g>
+  <rect x="0" y="276" width="1200" height="4" fill="url(#accent)"/>
+</svg>
