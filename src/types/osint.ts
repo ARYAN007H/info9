@@ -40,6 +40,25 @@ export interface RiskFactor {
 }
 
 /**
+ * An AI-vision geolocation hypothesis. ALWAYS marked DERIVED — an analyst
+ * must corroborate via zero-key sources before treating it as evidence.
+ */
+export interface VisionGeolocationCandidate {
+  label: string;
+  lat: number;
+  lon: number;
+  confidencePercent: number;
+  reasoning: string;
+  landmarks: string[];
+}
+
+export interface VisionGeolocationResult {
+  candidates: VisionGeolocationCandidate[];
+  model: string;
+  provenance: ProvenanceMeta;
+}
+
+/**
  * A heuristic score whose every contributing factor is disclosed.
  * Computed by src/utils/riskScore.ts — a triage aid, not a verdict.
  */

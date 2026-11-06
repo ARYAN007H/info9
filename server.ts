@@ -2,6 +2,11 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import {
+  buildGeminiRequestBody,
+  extractGeminiText,
+  parseVisionGeolocationPayload,
+} from './src/utils/visionGeolocate';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -139,6 +144,73 @@ async function startServer() {
       res.status(502).json({
         error: 'RDAP lookup failed',
         details: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  // AI photo geolocation (optional — needs a free Gemini key in GEMINI_API_KEY).
+  // The model output is a DERIVED hypothesis; corroboration stays zero-key.
+  app.post('/api/osint/vision-geolocate', async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(501).json({
+        error:
+          'GEMINI_API_KEY is not configured on this server. Add it to your .env (free key at aistudio.google.com/apikey) to enable AI photo geolocation. All other info9 features work without it.',
+      });
+      return;
+    }
+
+    const imageBase64 = String(req.body?.imageBase64 || '').replace(
+      /^data:[^;]+;base64,/,
+      ''
+    );
+    const mimeType = String(req.body?.mimeType || '');
+    if (!imageBase64 || !/^image\/(jpeg|png|webp|heic|heif)$/i.test(mimeType)) {
+      res.status(400).json({ error: 'imageBase64 and a supported image mimeType are required' });
+      return;
+    }
+
+    const model = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash');
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(buildGeminiRequestBody(imageBase64, mimeType)),
+        }
+      );
+      clearTimeout(timeout);
+
+      const json = await geminiRes.json().catch(() => null);
+      if (!geminiRes.ok) {
+        const msg = json?.error?.message || `Gemini returned HTTP ${geminiRes.status}`;
+        res.status(502).json({ error: `Vision upstream error: ${msg}` });
+        return;
+      }
+
+      const candidates = parseVisionGeolocationPayload(extractGeminiText(json));
+      res.json({
+        candidates,
+        model,
+        provenance: {
+          status: 'DERIVED',
+          source: `Google ${model} vision (AI hypothesis)`,
+          fetchedAtUtc: new Date().toISOString(),
+          note: candidates.length
+            ? 'Corroborate via Street View, satellite imagery, or reverse image search before recording.'
+            : 'The model found no usable geographic signal in this image.',
+        },
+      });
+    } catch (err) {
+      res.status(502).json({
+        error: `Vision geolocation failed: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   });

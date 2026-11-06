@@ -9,6 +9,7 @@ import type {
   OwnershipEdge,
   RipeBgpOverviewData,
   ShodanInternetDbData,
+  VisionGeolocationResult,
   WeatherVerificationData,
 } from '../types/osint';
 import { makeLiveProvenance } from '../utils/provenance';
@@ -928,6 +929,33 @@ export async function expandGleifParentTransform(
     discoveredEdge,
     provenance: makeLiveProvenance('GLEIF Level-2 Relationship Record'),
   };
+}
+
+/**
+ * AI photo geolocation (optional capability). Calls the local server, which
+ * requires a free GEMINI_API_KEY. The returned candidates are DERIVED
+ * hypotheses — the UI must present them with corroboration links.
+ */
+export async function geolocatePhotoViaVision(
+  imageBase64: string,
+  mimeType: string
+): Promise<VisionGeolocationResult> {
+  const res = await fetch('/api/osint/vision-geolocate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64, mimeType }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(
+      String(json?.error || `Vision geolocation service returned HTTP ${res.status}`)
+    );
+  }
+  const candidates = (json as VisionGeolocationResult | null)?.candidates;
+  if (!Array.isArray(candidates)) {
+    throw new Error('Vision service returned an unexpected payload');
+  }
+  return json as VisionGeolocationResult;
 }
 
 /**

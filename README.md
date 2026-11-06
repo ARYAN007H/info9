@@ -85,9 +85,11 @@ docker compose up --build -d   # → http://localhost:3000
 
 ## Data source policy
 
-Every upstream is a **free, public, documented endpoint**. info9 never proxies your queries through its own aggregation backend and never requires registration. Where a browser cannot call an upstream directly (CORS or User-Agent policy), the bundled Express server forwards the request transparently and adds nothing else. Sources currently integrated:
+Every upstream in the five modules is a **free, public, documented endpoint**. info9 never proxies your queries through its own aggregation backend and never requires registration. Where a browser cannot call an upstream directly (CORS or User-Agent policy), the bundled Express server forwards the request transparently and adds nothing else. Sources currently integrated:
 
 Overpass QL · Nominatim · Open-Meteo DEM + ERA5 · GLEIF L1/L2 · Wikidata · OpenAlex · Cloudflare DNS-over-HTTPS · RDAP · crt.sh · Shodan InternetDB · RIPEstat · Wayback Machine CDX
+
+**One optional exception, disclosed:** AI photo geolocation (upload a photo with stripped EXIF → get candidate coordinates as a *hypothesis*) uses the Gemini vision API, which needs a free key from [AI Studio](https://aistudio.google.com/apikey) in your `.env`. Without it, everything else works and the photo panel falls back to zero-key reverse-image-search links (Google Lens, Yandex, TinEye, Bing). AI candidates are always labeled `HYPOTHESIS — NOT EVIDENCE` and are corroborated through zero-key sources (Street View/satellite deep links, Overpass landmark scans, reverse search) before they belong in an evidence ledger.
 
 ## Roadmap
 

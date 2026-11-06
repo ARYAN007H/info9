@@ -11,9 +11,11 @@ import {
   Radar,
   Search,
   BookmarkPlus,
+  Sparkles,
   Sun,
   Upload,
 } from 'lucide-react';
+import ProvenanceBadge from './ProvenanceBadge';
 import type {
   InvestigationCase,
   OverpassConstraintClause,
@@ -31,6 +33,7 @@ import {
   fetchElevationAndWeatherVerification,
   geocodeLocationNominatim,
   geolocateIpAddress,
+  geolocatePhotoViaVision,
   queryOverpassLandmarks,
   reverseGeocodeNominatim,
 } from '../services/osintApis';
@@ -39,6 +42,14 @@ import {
   type ParsedPhoneClue,
 } from '../utils/clueParser';
 import { parseUploadedBinaryMetadata } from '../utils/osintForensics';
+import {
+  arrayBufferToBase64,
+  REVERSE_IMAGE_SEARCH_LINKS,
+  satelliteLink,
+  streetViewLink,
+  type VisionGeolocationResult,
+} from '../utils/visionGeolocate';
+import type { VisionGeolocationCandidate } from '../types/osint';
 
 interface GeolocationModuleProps {
   activeCase: InvestigationCase;
@@ -141,6 +152,17 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   const [resolvedClue, setResolvedClue] = useState<ResolvedClueCard | null>(
     null
   );
+
+  // AI photo geolocation state (optional capability; candidates are DERIVED).
+  const [photoPayload, setPhotoPayload] = useState<{
+    base64: string;
+    mimeType: string;
+  } | null>(null);
+  const [isQueryingVision, setIsQueryingVision] = useState(false);
+  const [visionResult, setVisionResult] = useState<VisionGeolocationResult | null>(
+    null
+  );
+  const [visionError, setVisionError] = useState<string | null>(null);
 
   // Simple 2-clue landmark filter
   const [primaryFeatureIdx, setPrimaryFeatureIdx] = useState<number>(0);
@@ -482,6 +504,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
       buffer
     );
     const objectUrl = URL.createObjectURL(file);
+    const base64 = arrayBufferToBase64(buffer);
 
     const img = new Image();
     img.onload = () => {
@@ -511,11 +534,61 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
           },
         ],
       });
+      setPhotoPayload(
+        /^image\/(jpeg|png|webp)$/i.test(file.type)
+          ? { base64, mimeType: file.type }
+          : { base64, mimeType: 'image/jpeg' }
+      );
+      setVisionResult(null);
+      setVisionError(null);
       setStatusMessage(
-        `Loaded photo "${file.name}" (${img.width}×${img.height}px). Search any visible sign, phone number, or landmark above, or use the Nearby Landmarks / Sun & Shadow tools on the right.`
+        `Loaded photo "${file.name}" (${img.width}×${img.height}px). Run AI geolocation below, or use the Nearby Landmarks / Sun & Shadow tools on the right.`
       );
     };
     img.src = objectUrl;
+  };
+
+  const handleRunVisionGeolocation = async () => {
+    if (!photoPayload || isQueryingVision) return;
+    setIsQueryingVision(true);
+    setVisionError(null);
+    setVisionResult(null);
+    setStatusMessage('Running AI geolocation on the uploaded photo...');
+    try {
+      const result = await geolocatePhotoViaVision(
+        photoPayload.base64,
+        photoPayload.mimeType
+      );
+      setVisionResult(result);
+      setStatusMessage(
+        result.candidates.length > 0
+          ? `AI produced ${result.candidates.length} candidate location(s) — verify each one before recording it as evidence.`
+          : 'The AI model found no usable geographic signal in this photo. Try reverse image search below.'
+      );
+    } catch (err) {
+      setVisionError(
+        err instanceof Error ? err.message : 'Vision geolocation failed'
+      );
+      setStatusMessage('AI geolocation unavailable — see the notice in the photo panel.');
+    } finally {
+      setIsQueryingVision(false);
+    }
+  };
+
+  const handlePinVisionCandidate = async (candidate: VisionGeolocationCandidate) => {
+    const address = await reverseGeocodeNominatim(candidate.lat, candidate.lon);
+    onUpdateGeoState((prev) => ({
+      ...prev,
+      lat: candidate.lat,
+      lon: candidate.lon,
+      locationLabel: candidate.label,
+      // Weather verified for the previous pin is invalid for this one.
+      weatherVerification: null,
+      landmarks: [],
+    }));
+    setStatusMessage(
+      `Pinned AI candidate "${candidate.label}" (${candidate.confidencePercent}% confidence). Nearest address: ${address}. Verify with Street View / satellite imagery before saving to the ledger.`
+    );
   };
 
   const handleScanNearbyLandmarks = async () => {
@@ -823,6 +896,143 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                       {item.value}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {/* AI Photo Geolocation Panel (optional capability; output is DERIVED) */}
+        {resolvedClue?.type === 'photo' && (
+          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-500" />
+                  AI Photo Geolocation
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-900">
+                    HYPOTHESIS — NOT EVIDENCE
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  No GPS metadata? The vision model proposes candidate locations
+                  from visual clues. Every candidate is an unverified hypothesis —
+                  corroborate with the links and tools below.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRunVisionGeolocation}
+                disabled={!photoPayload || isQueryingVision}
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              >
+                {isQueryingVision ? 'Analyzing photo...' : 'Run AI Geolocation'}
+              </button>
+            </div>
+
+            {visionError && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                <strong>AI geolocation unavailable:</strong> {visionError}
+              </div>
+            )}
+
+            {visionResult && visionResult.candidates.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <ProvenanceBadge meta={visionResult.provenance} />
+                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    model: {visionResult.model}
+                  </span>
+                </div>
+                {visionResult.candidates.map((candidate, idx) => (
+                  <div
+                    key={`${candidate.label}-${idx}`}
+                    className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                          #{idx + 1} {candidate.label}
+                        </span>
+                        <span className="ml-2 text-[11px] font-mono tabular-nums text-slate-500">
+                          {candidate.lat.toFixed(5)}, {candidate.lon.toFixed(5)}
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
+                          candidate.confidencePercent >= 60
+                            ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                            : candidate.confidencePercent >= 30
+                            ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
+                            : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
+                        }`}
+                      >
+                        {candidate.confidencePercent}% confidence
+                      </span>
+                    </div>
+                    {candidate.reasoning && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        {candidate.reasoning}
+                      </p>
+                    )}
+                    {candidate.landmarks.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {candidate.landmarks.map((lm) => (
+                          <span
+                            key={lm}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900 text-[10px] font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
+                          >
+                            {lm}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handlePinVisionCandidate(candidate)}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-md transition-colors"
+                      >
+                        Pin on Map (then verify)
+                      </button>
+                      <a
+                        href={streetViewLink(candidate.lat, candidate.lon)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                      >
+                        Street View ↗
+                      </a>
+                      <a
+                        href={satelliteLink(candidate.lat, candidate.lon)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-500 rounded-md transition-colors"
+                      >
+                        Satellite ↗
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-1 border-t border-slate-200 dark:border-slate-800">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 pb-1">
+                Human verification (zero-key reverse image search — upload the
+                photo yourself):
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {REVERSE_IMAGE_SEARCH_LINKS.map((engine) => (
+                  <a
+                    key={engine.name}
+                    href={engine.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={engine.note}
+                    className="px-2.5 py-1 text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-violet-500 rounded-md transition-colors"
+                  >
+                    {engine.name} ↗
+                  </a>
                 ))}
               </div>
             </div>
