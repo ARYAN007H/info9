@@ -49,9 +49,16 @@ export const MODULE_CATALOG: Record<ModuleId, ModuleCatalogEntry> = {
     shortName: 'IDN',
     job: 'Sweep a handle across ~700 community-indexed sites with per-probe detection.',
   },
+  investigate: {
+    id: 'investigate',
+    num: '06',
+    name: 'Pivot Console',
+    shortName: 'PIV',
+    job: 'One input, an orchestrated multi-source recon chain; save findings to the case.',
+  },
   sanctions: {
     id: 'sanctions',
-    num: '06',
+    num: '07',
     name: 'Watchlist',
     shortName: 'WAT',
     job: 'Cross-script sanctions and PEP matching with fully disclosed scoring.',
@@ -64,5 +71,6 @@ export const MODULE_ORDER: ModuleId[] = [
   'infra',
   'forensics',
   'identity',
+  'investigate',
   'sanctions',
 ];

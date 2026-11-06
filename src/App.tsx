@@ -8,7 +8,7 @@ import type {
   OwnershipEdge,
 } from './types/osint';
 import { DEFAULT_WORKSPACE_CASE } from './data/seedCases';
-import { createLinkedLedgerEntry } from './utils/osintForensics';
+import { createLinkedLedgerEntry, exportMispJson } from './utils/osintForensics';
 import { TopNavBar, type ProvenanceTally } from './components/TopNavBar';
 import { CaseSpine } from './components/CaseSpine';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
@@ -17,6 +17,7 @@ import { DossierShellModule } from './components/DossierShellModule';
 import { InfraClusterModule } from './components/InfraClusterModule';
 import { MediaForensicsModule } from './components/MediaForensicsModule';
 import { IdentitySweepModule } from './components/IdentitySweepModule';
+import { InvestigationRunModule } from './components/InvestigationRunModule';
 import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 
@@ -316,6 +317,14 @@ export function App() {
               />
             )}
 
+            {activeModule === 'investigate' && (
+              <InvestigationRunModule
+                activeCase={workspaceCase}
+                onAddInfraRecord={handleAddInfraRecord}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
             {activeModule === 'sanctions' && (
               <SanctionsLedgerModule
                 activeCase={workspaceCase}
@@ -339,6 +348,21 @@ export function App() {
       <EvidenceDrawer
         entries={workspaceCase.evidenceLedger}
         onExport={handleExportSignedDossier}
+        onExportMisp={() => {
+          const jsonString = exportMispJson(workspaceCase);
+          const blob = new Blob([jsonString], {
+            type: 'application/json;charset=utf-8',
+          });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'osint-investigation-misp-event.json';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          setToast('MISP 2.4 event JSON downloaded (built from recorded artifacts only).');
+        }}
       />
 
       {toast && (

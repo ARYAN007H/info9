@@ -21,6 +21,7 @@ function moduleCounts(activeCase: InvestigationCase): Record<ModuleId, number> {
     identity: activeCase.evidenceLedger.filter(
       (entry) => entry.module === 'identity'
     ).length,
+    investigate: 0,
     sanctions: activeCase.evidenceLedger.filter(
       (entry) => entry.module === 'sanctions'
     ).length,

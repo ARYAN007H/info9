@@ -8,6 +8,7 @@ import { Button, EmptyState } from './ui';
 interface EvidenceDrawerProps {
   entries: EvidenceLedgerEntry[];
   onExport: () => void;
+  onExportMisp?: () => void;
 }
 
 /**
@@ -15,7 +16,7 @@ interface EvidenceDrawerProps {
  * any module. Findings pinned anywhere on the bench land here with a
  * verifiable receipt.
  */
-export function EvidenceDrawer({ entries, onExport }: EvidenceDrawerProps) {
+export function EvidenceDrawer({ entries, onExport, onExportMisp }: EvidenceDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const chain = useMemo(() => verifyEvidenceLedgerChain(entries), [entries]);
 
@@ -73,6 +74,17 @@ export function EvidenceDrawer({ entries, onExport }: EvidenceDrawerProps) {
         </button>
         {chainChip}
         <div className="ml-auto flex items-center gap-2">
+          {onExportMisp && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Download className="h-3.5 w-3.5" />}
+              onClick={onExportMisp}
+              title="MISP 2.4 event JSON built from this case's recorded artifacts"
+            >
+              MISP
+            </Button>
+          )}
           <Button size="sm" variant="solid" icon={<Download className="h-3.5 w-3.5" />} onClick={onExport}>
             Export case report
           </Button>

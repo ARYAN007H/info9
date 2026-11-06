@@ -1038,3 +1038,71 @@ export function parseUploadedBinaryMetadata(
 
   return tags;
 }
+
+/**
+ * Serializes an InvestigationCase into a minimal MISP 2.4 JSON event,
+ * compatible with "Add event via JSON upload". Attributes are drawn from
+ * saved infrastructure records, entities and ledger targets so the export
+ * only contains what the analyst actually recorded — nothing invented.
+ */
+export function exportMispJson(activeCase: InvestigationCase): string {
+  const now = new Date().toISOString();
+  const attributes: Array<Record<string, unknown>> = [];
+
+  const pushAttribute = (
+    value: string,
+    type: string,
+    category: string,
+    comment: string
+  ) => {
+    if (!value) return;
+    attributes.push({
+      type,
+      category,
+      to_ids: false,
+      uuid: `${sha256HexSync(`${activeCase.id}:${type}:${value}`).slice(0, 8)}-${sha256HexSync(
+        value
+      ).slice(0, 4)}-4${sha256HexSync(value).slice(4, 7)}-8${sha256HexSync(
+        `${value}y`
+      ).slice(4, 7)}-${sha256HexSync(`${value}z`).slice(0, 12)}`,
+      value,
+      comment,
+      timestamp: Math.floor(Date.parse(now) / 1000),
+    });
+  };
+
+  for (const record of activeCase.infraRecords) {
+    for (const ip of record.aRecords) {
+      pushAttribute(ip, 'ip-dst', 'Network activity', `${record.domain} A record`);
+    }
+    for (const ns of record.nsRecords) {
+      pushAttribute(ns, 'domain', 'Network activity', `${record.domain} nameserver`);
+    }
+    pushAttribute(record.domain, 'domain', 'Network activity', `Domain investigated in ${activeCase.codeName}`);
+  }
+  for (const entity of activeCase.entities) {
+    if (entity.type === 'person') {
+      pushAttribute(entity.label, 'text', 'Person', `Entity: ${entity.identifier}`);
+    } else if (entity.type === 'company') {
+      pushAttribute(entity.label, 'text', 'Attribution', `Entity: ${entity.identifier}`);
+    }
+  }
+
+  const event = {
+    Event: {
+      date: now.slice(0, 10),
+      info: `info9 investigation ${activeCase.codeName} — ${activeCase.title}`,
+      threat_level_id: '3',
+      published: false,
+      analysis: '1',
+      distribution: '0',
+      uuid: `${sha256HexSync(activeCase.id).slice(0, 8)}-${sha256HexSync(
+        activeCase.codeName
+      ).slice(0, 4)}-4${sha256HexSync(activeCase.id).slice(4, 7)}-8${sha256HexSync(
+        activeCase.title
+      ).slice(4, 7)}-${sha256HexSync(activeCase.updatedAtUtc).slice(0, 12)}`,
+      Attribute: attributes,
+    },
+  };
+  return JSON.stringify(event, null, 2);
+}

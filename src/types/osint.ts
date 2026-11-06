@@ -4,6 +4,7 @@ export type ModuleId =
   | 'infra'
   | 'forensics'
   | 'identity'
+  | 'investigate'
   | 'sanctions';
 
 export type EntityType =

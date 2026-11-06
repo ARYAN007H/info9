@@ -32,20 +32,48 @@ const sharedRateLimiter = new RateLimiter(
 const sharedCache = new TtlCache<unknown>(10 * 60_000);
 
 const JSON_CACHE = sharedCache;
-async function fetchJsonCached(url: string, init?: RequestInit): Promise<unknown> {
+/**
+ * Proxy-aware JSON fetch: in the browser some upstreams (urlscan, Wayback
+ * CDX) block CORS — try the local proxy path first, fall back to direct.
+ * In Node (CLI) there is no CORS, so go straight to the upstream with UA.
+ */
+async function fetchJsonCached(
+  url: string,
+  init?: RequestInit,
+  proxyPath?: string
+): Promise<unknown> {
   const host = new URL(url).host;
   await sharedRateLimiter.acquire(host);
   const key = url;
   const hit = JSON_CACHE.get(key);
   if (hit !== undefined) return hit;
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'User-Agent': INFO9_USER_AGENT,
-      Accept: 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
+
+  let res: Response;
+  if (proxyPath && typeof window !== 'undefined') {
+    try {
+      const viaProxy = await fetch(proxyPath);
+      if (viaProxy.ok) {
+        const json = (await viaProxy.json()) as unknown;
+        JSON_CACHE.set(key, json);
+        return json;
+      }
+    } catch {
+      // proxy unavailable — fall through to direct
+    }
+    res = await fetch(url, {
+      ...init,
+      headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
+    });
+  } else {
+    res = await fetch(url, {
+      ...init,
+      headers: {
+        'User-Agent': INFO9_USER_AGENT,
+        Accept: 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    });
+  }
   if (!res.ok) {
     throw new Error(`${host} returned HTTP ${res.status}`);
   }
@@ -414,7 +442,9 @@ const urlscanSearch: Connector = {
       throw new Error(`"${target}" is not a valid domain`);
     }
     const json = (await fetchJsonCached(
-      `https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(clean)}&size=12`
+      `https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(clean)}&size=12`,
+      undefined,
+      `/api/osint/urlscan?q=${encodeURIComponent(`domain:${clean}`)}&size=12`
     )) as { results?: Array<Record<string, unknown>> };
     const results = Array.isArray(json?.results) ? json.results : [];
     return result(
@@ -550,7 +580,9 @@ const waybackHistory: Connector = {
     const json = (await fetchJsonCached(
       `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(
         clean
-      )}&output=json&limit=25&fl=timestamp,original,mimetype,statuscode,digest`
+      )}&output=json&limit=25&fl=timestamp,original,mimetype,statuscode,digest`,
+      undefined,
+      `/api/osint/wayback-cdx?url=${encodeURIComponent(clean)}`
     )) as unknown[];
     const rows = Array.isArray(json) ? json.slice(1) : [];
     return result(
@@ -560,6 +592,43 @@ const waybackHistory: Connector = {
       [{ kind: 'domain', value: clean, label: `${rows.length} archival captures` }],
       'Internet Archive Wayback CDX',
       rows.length === 0 ? ['No archival captures found (never archived or too new)'] : []
+    );
+  },
+};
+
+const domainRecon: Connector = {
+  id: 'domain-recon',
+  label: 'Domain Passive Recon',
+  description:
+    'Composite: DNS (DoH), RDAP registration, crt.sh certificates, Shodan exposure, RIPEstat BGP, transparent risk scoring.',
+  category: 'infra',
+  accepts: 'domain',
+  emits: ['domain', 'ip'],
+  policy: {
+    requiresKey: false,
+    docsUrl: 'https://github.com/ARYAN007H/info9#the-five-modules',
+    rateLimitPerMinute: 0,
+  },
+  async run(target) {
+    const clean = target.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(clean)) {
+      throw new Error(`"${target}" is not a valid domain`);
+    }
+    const { scanDomainInfrastructureLive } = await import('../services/osintApis');
+    const record = await scanDomainInfrastructureLive(clean);
+    const primaryIp = record.aRecords[0];
+    return result(
+      this.id,
+      clean,
+      record,
+      [
+        { kind: 'domain', value: clean, label: `${record.ctSubdomainsCount} CT subdomains` },
+        ...(primaryIp
+          ? [{ kind: 'ip' as EntityKind, value: primaryIp, label: `${record.asnOrg ?? 'unknown'} (${record.asn ?? 'unknown ASN'})` }]
+          : []),
+      ],
+      'Cloudflare DoH · RDAP · crt.sh · Shodan · RIPEstat',
+      record.dataGaps
     );
   },
 };
@@ -581,6 +650,7 @@ const REGISTRY: Connector[] = [
   githubUserRecon,
   ipGeolocation,
   waybackHistory,
+  domainRecon,
 ];
 
 export function listConnectors(): Connector[] {

@@ -367,6 +367,62 @@ async function startServer() {
     });
   });
 
+  // URLScan.io public search proxy (browser CORS blocked on some origins)
+  app.get('/api/osint/urlscan', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length > 200) {
+      res.status(400).json({ error: 'Valid q parameter required' });
+      return;
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const upstream = await fetch(
+        `https://urlscan.io/api/v1/search/?q=${encodeURIComponent(q)}&size=12`,
+        { signal: controller.signal, headers: { 'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)' } }
+      );
+      clearTimeout(timeout);
+      if (!upstream.ok) {
+        res.status(upstream.status).json({ error: `urlscan.io returned ${upstream.status}` });
+        return;
+      }
+      res.json(await upstream.json());
+    } catch (err) {
+      res.status(502).json({
+        error: `urlscan.io unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Wayback CDX proxy (CORS blocked from browsers on some deployments)
+  app.get('/api/osint/wayback-cdx', async (req, res) => {
+    const targetUrl = String(req.query.url || '').trim();
+    if (!targetUrl || targetUrl.length > 300) {
+      res.status(400).json({ error: 'Valid url parameter required' });
+      return;
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const upstream = await fetch(
+        `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(
+          targetUrl
+        )}&output=json&limit=25&fl=timestamp,original,mimetype,statuscode,digest`,
+        { signal: controller.signal, headers: { 'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)' } }
+      );
+      clearTimeout(timeout);
+      if (!upstream.ok) {
+        res.status(upstream.status).json({ error: `Wayback CDX returned ${upstream.status}` });
+        return;
+      }
+      res.json(await upstream.json());
+    } catch (err) {
+      res.status(502).json({
+        error: `Wayback CDX unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
