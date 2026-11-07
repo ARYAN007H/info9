@@ -20,6 +20,7 @@ import {
   Button,
   DataLabel,
   DataValue,
+  EmptyState,
   NoticeBanner,
   Panel,
   SelectField,
@@ -218,6 +219,16 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
           </NoticeBanner>
         )}
       </Panel>
+
+      {!results && !isSweeping && (
+        <Panel>
+          <EmptyState
+            icon={<UserSearch className="h-5 w-5" />}
+            title="No sweep run yet"
+            hint="Enter a handle above and sweep. Each probe visits the site's own page and looks for the profile's detection signature — a full ~700-site sweep takes a minute or two, and hits are flagged for visual verification before you treat any as the same person."
+          />
+        </Panel>
+      )}
 
       {results && (
         <div className="space-y-4">

@@ -474,6 +474,8 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
             )}
           </>
         }
+        /* collapse the body to nothing when there's no status to show */
+        flush={!statusMessage}
       >
         {statusMessage && (
           <NoticeBanner tone="info" onDismiss={() => setStatusMessage(null)}>

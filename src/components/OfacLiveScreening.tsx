@@ -103,7 +103,7 @@ export function OfacLiveScreening() {
   return (
     <Panel
       tag={MODULE_CATALOG.sanctions.num}
-      title="Live OFAC SDN screening"
+      title="Watchlist — live OFAC SDN screening"
       description="Score a name against the real U.S. Treasury SDN list — free public data, screened locally, zero keys."
     >
       <div className="space-y-3">

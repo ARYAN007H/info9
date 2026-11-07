@@ -267,7 +267,13 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     tileLayerRef.current = tileLayer;
     vectorLayerGroupRef.current = vectorGroup;
 
+    // Leaflet computes tile layout from the container size at init; without
+    // this, viewport/responsive resizes leave the map clipped or half-drawn.
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize());
+    resizeObserver.observe(mapContainerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
@@ -776,10 +782,8 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               </h1>
             </div>
             <p className="mt-1 text-sm text-ink-2">
-              Submit whatever information you have — a <strong>photo</strong>,{' '}
-              <strong>phone number</strong>, <strong>IP address</strong>,{' '}
-              <strong>street/landmark name</strong>, or <strong>coordinates</strong>{' '}
-              — to pinpoint the location on the map.
+              Photo, phone number, IP, place name, or coordinates — pinpoint
+              any clue on the map.
             </p>
           </div>
 
@@ -1226,10 +1230,12 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         )}
       </div>
 
-      {/* Step 2: Interactive Map (Left 7 cols) + Guided Verification Tools (Right 5 cols) */}
+      {/* Step 2: Interactive Map (Left 7 cols) + Guided Verification Tools (Right 5 cols).
+          On desktop both columns size to the viewport so the whole map is on
+          screen without scrolling — the assistant column scrolls internally. */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left 7 Cols: Interactive Map */}
-        <div className="lg:col-span-7 border border-line bg-panel rounded-md flex flex-col overflow-hidden">
+        <div className="lg:col-span-7 border border-line bg-panel rounded-md flex flex-col overflow-hidden lg:h-[clamp(300px,calc(100dvh-412px),760px)]">
           <div className="px-4 py-3 border-b border-line flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-ink truncate">
@@ -1263,11 +1269,11 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
             </div>
           </div>
 
-          <div className="relative flex-1 min-h-[440px]">
+          <div className="relative flex-1 min-h-[200px]">
             <div
               ref={mapContainerRef}
               data-testid="osint-leaflet-map"
-              className="w-full h-full min-h-[440px] z-0"
+              className="w-full h-full min-h-[200px] z-0"
             />
           </div>
 
@@ -1280,7 +1286,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         </div>
 
         {/* Right 5 Cols: Clean 2-Tab Verification Assistant */}
-        <div className="lg:col-span-5 border border-line bg-panel rounded-md p-5 flex flex-col justify-between">
+        <div className="lg:col-span-5 border border-line bg-panel rounded-md p-5 flex flex-col justify-between lg:h-[clamp(300px,calc(100dvh-412px),760px)] lg:overflow-y-auto">
           <div className="space-y-4">
             {/* Segmented Tab Switcher */}
             <div className="flex items-center gap-1 p-0.5 rounded border border-line bg-app">
