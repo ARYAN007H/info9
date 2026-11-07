@@ -973,6 +973,7 @@ export function parseCommonsGeoPhotoResponse(json: unknown): CommonsGeoPhoto[] {
   for (const page of Object.values(pages)) {
     const p = page as {
       title?: unknown;
+      coordinates?: Array<{ lat?: unknown; lon?: unknown }>;
       imageinfo?: Array<{
         thumburl?: unknown;
         descriptionurl?: unknown;
@@ -983,8 +984,9 @@ export function parseCommonsGeoPhotoResponse(json: unknown): CommonsGeoPhoto[] {
     if (!info) continue;
     const gpsLat = info.extmetadata?.GPSLatitude?.value;
     const gpsLon = info.extmetadata?.GPSLongitude?.value;
-    const lat = Number(gpsLat);
-    const lon = Number(gpsLon);
+    const coords = Array.isArray(p.coordinates) ? p.coordinates[0] : undefined;
+    const lat = Number(gpsLat ?? coords?.lat);
+    const lon = Number(gpsLon ?? coords?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
     if (typeof info.thumburl !== 'string' || !info.thumburl) continue;
@@ -1020,6 +1022,28 @@ export async function searchCommonsGeolocatedPhotos(
   const pages = (json as { query?: { pages?: Record<string, unknown> } })?.query?.pages;
   const candidatesExamined = pages ? Object.keys(pages).length : 0;
   return { results: parseCommonsGeoPhotoResponse(json), candidatesExamined };
+}
+
+/**
+ * Geotagged Wikimedia Commons photos within `radiusM` of a coordinate —
+ * the map's "community photo coverage" layer (zero key, CORS via origin=*).
+ */
+export async function searchCommonsPhotosNear(
+  lat: number,
+  lon: number,
+  radiusM = 2000
+): Promise<CommonsGeoPhoto[]> {
+  const url =
+    `https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*` +
+    `&generator=geosearch&ggscoord=${Number(lat.toFixed(5))}|${Number(lon.toFixed(5))}` +
+    `&ggsradius=${Math.min(10000, Math.round(radiusM))}&ggslimit=30&ggsnamespace=6` +
+    `&prop=imageinfo|coordinates&iiprop=url|extmetadata&iiurlwidth=420`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`Commons geosearch returned HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  return parseCommonsGeoPhotoResponse(json);
 }
 
 /**

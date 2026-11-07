@@ -1,18 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import L from 'leaflet';
+import { HeatLayer } from 'leaflet.heat';
 import {
+  Anchor,
   Camera,
   CloudSun,
   Compass,
   Crosshair,
+  Flame,
   Globe,
+  Image as ImageIcon,
+  Layers,
   MapPin,
   Phone,
+  Plane,
   Radar,
   Search,
   BookmarkPlus,
   Sparkles,
   Sun,
+  TrainFront,
   Upload,
 } from 'lucide-react';
 import ProvenanceBadge from './ProvenanceBadge';
@@ -30,6 +38,7 @@ import {
   projectBearingCoordinate,
   solveChronolocationTimeWindow,
 } from '../utils/solarMath';
+import { parseAdsbLolStates, type AircraftTrack } from '../utils/doppler';
 import {
   executeOverpassIntersectionQuery,
   fetchElevationAndWeatherVerification,
@@ -39,6 +48,7 @@ import {
   queryOverpassLandmarks,
   reverseGeocodeNominatim,
   searchCommonsGeolocatedPhotos,
+  searchCommonsPhotosNear,
 } from '../services/osintApis';
 import { corroborateWithCommons, type CommonsCorroborationResult } from '../services/photoCorroborate';
 import {
@@ -157,6 +167,20 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     null
   );
 
+  // Map overlay layers — all zero-key: local heatmap over scanned landmarks,
+  // live adsb.lol aircraft, Commons geosearch photos, OpenRailwayMap /
+  // OpenSeaMap tiles. (No traffic layer: every traffic tile source needs a
+  // paid key — we don't fake one.)
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showAircraft, setShowAircraft] = useState(false);
+  const [showCommonsPhotos, setShowCommonsPhotos] = useState(false);
+  const [showRailways, setShowRailways] = useState(false);
+  const [showMarine, setShowMarine] = useState(false);
+  const [commonsPhotos, setCommonsPhotos] = useState<CommonsGeoPhoto[]>([]);
+  const [commonsPhotosError, setCommonsPhotosError] = useState<string | null>(null);
+  const [aircraftCount, setAircraftCount] = useState<number | null>(null);
+
   // AI photo geolocation state (optional capability; candidates are DERIVED).
   const [photoPayload, setPhotoPayload] = useState<{
     base64: string;
@@ -181,6 +205,12 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const vectorLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const heatLayerRef = useRef<L.Layer | null>(null);
+  const aircraftLayerRef = useRef<L.LayerGroup | null>(null);
+  const commonsLayerRef = useRef<L.LayerGroup | null>(null);
+  const railwayLayerRef = useRef<L.TileLayer | null>(null);
+  const marineLayerRef = useRef<L.TileLayer | null>(null);
+  const aircraftTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const shadowMetrics = useMemo(
     () =>
@@ -285,6 +315,244 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     if (!tileLayerRef.current) return;
     tileLayerRef.current.setUrl(TILE_URLS[tileMode].url);
   }, [tileMode]);
+
+  // Close the layers dropdown when a click lands outside it.
+  useEffect(() => {
+    if (!layersOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && !target.closest('[data-layers-root]')) setLayersOpen(false);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [layersOpen]);
+
+  // The dropdown renders through a portal with fixed coordinates so the map
+  // panel's overflow-hidden rounding never clips it on short viewports.
+  const layersBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [layersPos, setLayersPos] = useState<{ top: number; left: number; maxH: number } | null>(null);
+  useEffect(() => {
+    if (!layersOpen) {
+      setLayersPos(null);
+      return;
+    }
+    const update = () => {
+      const rect = layersBtnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setLayersPos({
+        top: rect.bottom + 6,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - 308)),
+        maxH: Math.min(430, window.innerHeight - rect.bottom - 14),
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [layersOpen]);
+
+  // ---- Overlay layers (each adds/removes independently of the base map) ----
+
+  // Infrastructure heatmap over the scanned landmark set.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showHeatmap) {
+      if (heatLayerRef.current) {
+        map.removeLayer(heatLayerRef.current);
+        heatLayerRef.current = null;
+      }
+      return;
+    }
+    const points = geoState.landmarks.map((lm) => [lm.lat, lm.lon, 1] as [number, number, number]);
+    // the plugin's d.ts omits the inherited Leaflet Layer members
+    const layer = new HeatLayer(points, {
+      radius: 28,
+      blur: 20,
+      minOpacity: 0.35,
+      maxZoom: 16,
+    }) as unknown as L.Layer;
+    layer.addTo(map);
+    heatLayerRef.current = layer;
+    return () => {
+      if (heatLayerRef.current) {
+        map.removeLayer(heatLayerRef.current);
+        heatLayerRef.current = null;
+      }
+    };
+  }, [showHeatmap, geoState.landmarks]);
+
+  // Keyless tile overlays: OpenRailwayMap + OpenSeaMap.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showRailways) {
+      if (railwayLayerRef.current) {
+        map.removeLayer(railwayLayerRef.current);
+        railwayLayerRef.current = null;
+      }
+      return;
+    }
+    const layer = L.tileLayer('https://{s}.tiles.openrailwaymap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenRailwayMap (CC-BY-SA)',
+      maxZoom: 19,
+      subdomains: 'abc',
+      opacity: 0.85,
+    }).addTo(map);
+    railwayLayerRef.current = layer;
+    return () => {
+      if (railwayLayerRef.current) {
+        map.removeLayer(railwayLayerRef.current);
+        railwayLayerRef.current = null;
+      }
+    };
+  }, [showRailways]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showMarine) {
+      if (marineLayerRef.current) {
+        map.removeLayer(marineLayerRef.current);
+        marineLayerRef.current = null;
+      }
+      return;
+    }
+    const layer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenSeaMap contributors',
+      maxZoom: 18,
+      opacity: 0.9,
+    }).addTo(map);
+    marineLayerRef.current = layer;
+    return () => {
+      if (marineLayerRef.current) {
+        map.removeLayer(marineLayerRef.current);
+        marineLayerRef.current = null;
+      }
+    };
+  }, [showMarine]);
+
+  // Geotagged Commons photos near the pin (refetches when the pin moves).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showCommonsPhotos) {
+      if (commonsLayerRef.current) {
+        map.removeLayer(commonsLayerRef.current);
+        commonsLayerRef.current = null;
+      }
+      setCommonsPhotos([]);
+      setCommonsPhotosError(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchPhotos = async () => {
+      try {
+        const results = await searchCommonsPhotosNear(geoState.lat, geoState.lon, 2000);
+        if (cancelled) return;
+        setCommonsPhotos(results);
+        setCommonsPhotosError(null);
+        const group = L.layerGroup();
+        for (const photo of results) {
+          L.marker([photo.lat, photo.lon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="width:22px;height:22px;border-radius:4px;overflow:hidden;border:2px solid #f0954f;box-shadow:0 1px 4px rgba(0,0,0,.5)"><img src="${photo.thumbUrl}" style="width:100%;height:100%;object-fit:cover" alt=""/></div>`,
+              iconSize: [22, 22],
+              iconAnchor: [11, 11],
+            }),
+          })
+            .bindPopup(
+              `<div style="max-width:220px"><img src="${photo.thumbUrl}" style="width:100%;border-radius:4px;margin-bottom:4px" alt=""/><div style="font-weight:600;font-size:12px">${photo.title.replace(/</g, '&lt;')}</div><a href="${photo.descriptionUrl}" target="_blank" rel="noreferrer" style="font-size:11px">Open on Wikimedia Commons ↗</a></div>`
+            )
+            .addTo(group);
+        }
+        if (commonsLayerRef.current) map.removeLayer(commonsLayerRef.current);
+        group.addTo(map);
+        commonsLayerRef.current = group;
+      } catch (err) {
+        if (!cancelled) {
+          setCommonsPhotos([]);
+          setCommonsPhotosError(err instanceof Error ? err.message : String(err));
+        }
+      }
+    };
+    const timer = setTimeout(fetchPhotos, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showCommonsPhotos, geoState.lat, geoState.lon]);
+
+  // Live air traffic from the free adsb.lol feed — markers refresh ~15 s
+  // while the layer is on. Pairs naturally with the Acoustic module: what's
+  // overhead right now is what a recording would hear.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!showAircraft) {
+      if (aircraftTimerRef.current) {
+        clearInterval(aircraftTimerRef.current);
+        aircraftTimerRef.current = null;
+      }
+      if (aircraftLayerRef.current) {
+        map.removeLayer(aircraftLayerRef.current);
+        aircraftLayerRef.current = null;
+      }
+      setAircraftCount(null);
+      return;
+    }
+    let cancelled = false;
+    const drawAircraft = (tracks: AircraftTrack[]) => {
+      const group = L.layerGroup();
+      for (const t of tracks) {
+        const p = t.points[t.points.length - 1];
+        const lat = p.lat;
+        const lon = p.lon;
+        const heading = p.headingDeg ?? 0;
+        L.marker([lat, lon], {
+          icon: L.divIcon({
+            className: '',
+            html: `<span style="display:inline-block;font-size:16px;line-height:16px;color:#f0954f;text-shadow:0 1px 3px rgba(0,0,0,.7);transform:rotate(${heading - 45}deg)">✈</span>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          }),
+        })
+          .bindTooltip(`${t.callsign || t.icao}`)
+          .bindPopup(
+            `<div style="font-size:12px"><b>${t.callsign || t.icao}</b><br/>alt ${Math.round(p.altM)} m · ${t.points.length > 1 ? 'live' : 'first fix'}</div>`
+          )
+          .addTo(group);
+      }
+      if (aircraftLayerRef.current) map.removeLayer(aircraftLayerRef.current);
+      group.addTo(map);
+      aircraftLayerRef.current = group;
+      setAircraftCount(tracks.length);
+    };
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/osint/adsb?lat=${geoState.lat}&lon=${geoState.lon}&radiusKm=30`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        drawAircraft(parseAdsbLolStates(json, Date.now() / 1000));
+      } catch {
+        // transient network error — next poll retries; the map shows what it has
+      }
+    };
+    void poll();
+    aircraftTimerRef.current = setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      if (aircraftTimerRef.current) {
+        clearInterval(aircraftTimerRef.current);
+        aircraftTimerRef.current = null;
+      }
+    };
+  }, [showAircraft, geoState.lat, geoState.lon]);
 
   // Update Map Pin, Sun/Shadow Vectors, and Discovered landmarks
   useEffect(() => {
@@ -1251,21 +1519,134 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1 p-0.5 rounded border border-line bg-app">
-              {(['satellite', 'osm', 'topo'] as const).map((mode) => (
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 p-0.5 rounded border border-line bg-app">
+                {(['satellite', 'osm', 'topo'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setTileMode(mode)}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                      tileMode === mode
+                        ? 'bg-well text-ink'
+                        : 'text-ink-2 hover:text-ink'
+                    }`}
+                  >
+                    {TILE_URLS[mode].label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative" data-layers-root>
                 <button
-                  key={mode}
+                  ref={layersBtnRef}
                   type="button"
-                  onClick={() => setTileMode(mode)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                    tileMode === mode
-                      ? 'bg-well text-ink'
-                      : 'text-ink-2 hover:text-ink'
+                  onClick={() => setLayersOpen((v) => !v)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 ${
+                    layersOpen
+                      ? 'border-accent text-ink bg-well'
+                      : 'border-line bg-app text-ink-2 hover:text-ink'
                   }`}
                 >
-                  {TILE_URLS[mode].label}
+                  <Layers className="w-3.5 h-3.5" />
+                  Layers
+                  {(showHeatmap || showAircraft || showCommonsPhotos || showRailways || showMarine) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
+                  )}
                 </button>
-              ))}
+
+                {layersOpen && layersPos &&
+                  createPortal(
+                  <div
+                    data-layers-root
+                    className="fixed z-[1200] w-72 rounded-md border border-line bg-panel shadow-xl overflow-y-auto"
+                    style={{ top: layersPos.top, left: layersPos.left, maxHeight: layersPos.maxH }}
+                  >
+                    <div className="px-3 pt-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
+                      Map layers — all free public data
+                    </div>
+                    {(
+                      [
+                        {
+                          key: 'heatmap',
+                          icon: <Flame className="w-3.5 h-3.5" />,
+                          label: 'Infrastructure heatmap',
+                          desc:
+                            geoState.landmarks.length > 0
+                              ? `Density of the ${geoState.landmarks.length} scanned landmarks`
+                              : 'Scan landmarks first — heat comes from the pin scan',
+                          value: showHeatmap,
+                          set: setShowHeatmap,
+                        },
+                        {
+                          key: 'aircraft',
+                          icon: <Plane className="w-3.5 h-3.5" />,
+                          label:
+                            aircraftCount != null
+                              ? `Live aircraft (${aircraftCount})`
+                              : 'Live aircraft',
+                          desc: 'adsb.lol feed within 30 km, refreshes ~15 s',
+                          value: showAircraft,
+                          set: setShowAircraft,
+                        },
+                        {
+                          key: 'commons',
+                          icon: <ImageIcon className="w-3.5 h-3.5" />,
+                          label:
+                            commonsPhotos.length > 0
+                              ? `Commons photos (${commonsPhotos.length})`
+                              : 'Commons photos',
+                          desc: 'Geotagged Wikimedia photos within 2 km',
+                          value: showCommonsPhotos,
+                          set: setShowCommonsPhotos,
+                        },
+                        {
+                          key: 'railways',
+                          icon: <TrainFront className="w-3.5 h-3.5" />,
+                          label: 'Railway network',
+                          desc: 'OpenRailwayMap overlay (rail-side verification)',
+                          value: showRailways,
+                          set: setShowRailways,
+                        },
+                        {
+                          key: 'marine',
+                          icon: <Anchor className="w-3.5 h-3.5" />,
+                          label: 'Marine marks',
+                          desc: 'OpenSeaMap overlay (buoys, lights, harbors)',
+                          value: showMarine,
+                          set: setShowMarine,
+                        },
+                      ] as const
+                    ).map((row) => (
+                      <label
+                        key={row.key}
+                        className="flex items-start gap-2.5 px-3 py-2 hover:bg-well cursor-pointer border-t border-line first:border-t-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={row.value}
+                          onChange={(e) => row.set(e.target.checked)}
+                          className="mt-0.5 accent-[var(--color-accent,#f0954f)]"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-ink">
+                            <span className="text-ink-3">{row.icon}</span>
+                            {row.label}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-ink-3">
+                            {row.desc}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <div className="border-t border-line px-3 py-2 text-[10px] leading-4 text-ink-3">
+                      No traffic layer: every traffic tile source is paid-API —
+                      info9 doesn't fake one.
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </div>
             </div>
           </div>
 

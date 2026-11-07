@@ -27,6 +27,8 @@ export interface TrackPoint {
   lon: number;
   /** Meters above sea level. */
   altM: number;
+  /** Course over ground in degrees, when the feed provides it (map display). */
+  headingDeg?: number;
 }
 
 export interface AircraftTrack {
@@ -125,11 +127,18 @@ export function parseAdsbLolStates(json: unknown, baseTimeSec: number): Aircraft
     const lon = Number(ac.lon);
     if (!icao || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const alt = Number(ac.alt_geom ?? ac.alt_baro ?? 0);
+    const heading = Number(ac.track);
     const track: AircraftTrack = {
       icao,
       callsign: typeof ac.flight === 'string' ? ac.flight.trim() : undefined,
       points: [
-        { tSec: baseTimeSec, lat, lon, altM: Number.isFinite(alt) && alt !== 0 ? alt : 0 },
+        {
+          tSec: baseTimeSec,
+          lat,
+          lon,
+          altM: Number.isFinite(alt) && alt !== 0 ? alt : 0,
+          ...(Number.isFinite(heading) ? { headingDeg: heading } : {}),
+        },
       ],
     };
     const existing = byIcao.get(icao);

@@ -28,6 +28,7 @@
     "@vladmandic/human": "^3.3.6",
     "express": "^4.21.2",
     "leaflet": "^1.9.4",
+    "leaflet.heat": "^1.0.0",
     "lucide-react": "^0.546.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
