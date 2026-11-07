@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, Download, FileWarning, Link2, ShieldCheck } from 'lucide-react';
+import { ChevronUp, Download, FileWarning, Link2, Printer, ShieldCheck } from 'lucide-react';
 import type { EvidenceLedgerEntry } from '../types/osint';
 import { verifyEvidenceLedgerChain } from '../utils/osintForensics';
 import { MODULE_CATALOG } from './moduleCatalog';
@@ -9,6 +9,7 @@ interface EvidenceDrawerProps {
   entries: EvidenceLedgerEntry[];
   onExport: () => void;
   onExportMisp?: () => void;
+  onPrintReport?: () => void;
 }
 
 /**
@@ -16,7 +17,7 @@ interface EvidenceDrawerProps {
  * any module. Findings pinned anywhere on the bench land here with a
  * verifiable receipt.
  */
-export function EvidenceDrawer({ entries, onExport, onExportMisp }: EvidenceDrawerProps) {
+export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport }: EvidenceDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const chain = useMemo(() => verifyEvidenceLedgerChain(entries), [entries]);
 
@@ -74,6 +75,17 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp }: EvidenceDraw
         </button>
         {chainChip}
         <div className="ml-auto flex items-center gap-2">
+          {onPrintReport && (
+            <Button
+              size="sm"
+              variant="solid"
+              icon={<Printer className="h-3.5 w-3.5" />}
+              onClick={onPrintReport}
+              title="Print-optimized dossier — save as PDF from the browser dialog"
+            >
+              PDF report
+            </Button>
+          )}
           {onExportMisp && (
             <Button
               size="sm"

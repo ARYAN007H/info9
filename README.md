@@ -146,6 +146,10 @@ Phase 5 — **ecosystem**
 - [ ] Documentation site with per-module methodology pages
 - [ ] Public demo instance
 
+## Methodology library
+
+Every module documents how it reaches its conclusions — the math, the rule tables, the honest limitations, and the citations — in [docs/methodology/](docs/methodology/). The PDF dossier cites the relevant methodology page per section, so a printed report explains its own reasoning.
+
 ## Responsible use
 
 info9 is built for **defensive research, verification journalism, and lawful investigation**. You are responsible for using it in compliance with the law and with the terms of service of the upstream data sources. Do not use info9 to harass, dox, stalk, or profile private individuals. When publishing findings, verify before you amplify — that is what the evidence ledger is for.

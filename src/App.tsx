@@ -9,6 +9,7 @@ import type {
 } from './types/osint';
 import { DEFAULT_WORKSPACE_CASE } from './data/seedCases';
 import { createLinkedLedgerEntry, exportMispJson } from './utils/osintForensics';
+import { buildPrintableReportHtml } from './utils/reportGenerator';
 import { TopNavBar, type ProvenanceTally } from './components/TopNavBar';
 import { CaseSpine } from './components/CaseSpine';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
@@ -348,6 +349,25 @@ export function App() {
       <EvidenceDrawer
         entries={workspaceCase.evidenceLedger}
         onExport={handleExportSignedDossier}
+        onPrintReport={() => {
+          const html = buildPrintableReportHtml(workspaceCase);
+          const iframe = document.createElement('iframe');
+          iframe.setAttribute('aria-hidden', 'true');
+          iframe.style.position = 'fixed';
+          iframe.style.right = '0';
+          iframe.style.bottom = '0';
+          iframe.style.width = '0';
+          iframe.style.height = '0';
+          iframe.style.border = '0';
+          iframe.srcdoc = html;
+          iframe.onload = () => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          };
+          document.body.appendChild(iframe);
+          setToast('Dossier ready — choose "Save as PDF" in the print dialog.');
+          window.setTimeout(() => iframe.remove(), 60_000);
+        }}
         onExportMisp={() => {
           const jsonString = exportMispJson(workspaceCase);
           const blob = new Blob([jsonString], {
