@@ -3,7 +3,7 @@
 <img src="docs/banner.svg" alt="info9 — Argon OSINT Workbench" width="100%"/>
 
 **A zero-key, free & open-source intelligence workbench.**
-Eight specialist instruments — geolocation, corporate unwrapping, infrastructure recon, media forensics, identity sweep, pivot chains, watchlist screening, face recon — running entirely on public data sources and in-browser computation. No paid API keys. No accounts. No subscription.
+Nine specialist instruments — geolocation, corporate unwrapping, infrastructure recon, media forensics, identity sweep, pivot chains, watchlist screening, face recon, acoustic doppler — running entirely on public data sources and in-browser computation. No paid API keys. No accounts. No subscription.
 
 [![CI](https://github.com/ARYAN007H/info9/actions/workflows/ci.yml/badge.svg)](https://github.com/ARYAN007H/info9/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -35,6 +35,7 @@ Most OSINT tooling is either a paid SaaS (Maltego, DomainTools), a pile of scatt
 | **06 · Sanctions & Evidence Ledger** | Name matching across scripts (Cyrillic/diacritic transliteration + Jaro-Winkler + Soundex + token-set) with Bayesian posterior scoring; **live screening against the real OFAC SDN list** (free Treasury CSV, parsed and cached server-side); every module finding lands in a hash-chained, tamper-evident evidence ledger with STIX 2.1 export | Live OFAC SDN CSV (U.S. Treasury) · bundled demo set for offline use |
 | **07 · Watchlist** | Cross-script sanctions and PEP matching against the live list with fully disclosed scoring factors and dispositions | Live OFAC SDN CSV |
 | **08 · Face Recon** | **On-device face matching**: local detection + deep face descriptors (nothing uploaded), ranked similarity against a reference corpus — username avatar sweeps, named-person portrait verification via Wikidata P18, or analyst-supplied image folders — plus same-person clustering; honest heuristic bands, never proof of identity | unavatar.io, GitHub avatars, Wikidata/Commons · 100% local inference |
+| **09 · Acoustic Doppler** | Geolocate a recording from aircraft audio: spectrogram peak-tracking extracts Doppler curves, matched against ADS-B flight tracks (adsb.lol live watch or provider CSV/JSON imports) via a closed-form-f0 grid fit with timeline-offset search; joint multi-aircraft fit collapses the single-pass mirror ambiguity; RMS residual always disclosed | adsb.lol (free) · 100% local audio DSP |
 
 ## Architecture
 

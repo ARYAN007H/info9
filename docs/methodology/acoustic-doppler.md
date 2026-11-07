@@ -1,7 +1,7 @@
 # Methodology: Acoustic Doppler Geolocation (experimental)
 
 Code: `src/utils/doppler.ts`, `src/utils/fft.ts` · Tests: `src/utils/doppler.test.ts`, `src/utils/fft.test.ts`
-Status: **engine complete, UI pending** — the math is shipped and tested; the analyst-facing module is in progress.
+Status: **shipped** — the math core, the analyst bench (module 09: audio → spectrogram → band → curve → track import / live sky-watch → joint fit → map pin) and the adsb.lol proxy are live and E2E-tested.
 
 ## The technique (and where it comes from)
 
@@ -13,10 +13,11 @@ Demonstrated publicly by the YouTuber **Colsto** ("I discovered a sound that lea
 2. **Predicted curve** — for an aircraft track (from ADS-B) and a *candidate recorder position*, the range-rate `v_r(t) = d(range)/dt` gives `f_pred(t) = f0 · c / (c + v_r(t))`, `c = 331.3·√(1+T/273.15)`.
 3. **The fit** — grid search over candidate positions on a shared lattice; for each candidate the tone's base frequency `f0` has a **closed-form least-squares solution** (the model is linear in `f0`); timeline offset between the recording and the flight track is searched in parallel; RMS residual per candidate. Two-stage coarse→refine.
 4. **Multi-aircraft joint fit** — each aircraft's RMS field is normalized by its own best cost, then summed on the shared grid. Different flight headings collapse the ambiguity. This is the honest default.
+5. **Progressive refinement with offset re-search** — a single straight pass trades along-track position against the timeline offset (offset ≈ Δalong/v); a refine that keeps the coarse stage's offset freezes that quantization error in. Each refine stage therefore re-opens the offset search scaled to its spatial radius (clamped to the analyst's window). E2E-verified: a synthetic 60 s clip recovers the recorder to **~45 m** with f0 within 1.3 Hz and offset within 0.1 s of truth.
 
 ## The fundamental ambiguity (disclosed, not hidden)
 
-A single straight-line pass constrains **distance to the flight track**, not which side you're on — the curve is symmetric about the track. A single-aircraft fit is therefore **two-sided** and must never be presented as unique (the test suite asserts the fit lands on the truth *or its mirror*). Only aircraft on different headings collapse the ambiguity; the joint fit test recovers the true position to **~200 m** from noisy synthetic curves (1 Hz noise, two crossing aircraft at 3 km altitude).
+A single straight-line pass constrains **distance to the flight track**, not which side you're on — the curve is symmetric about the track. A single-aircraft fit is therefore **two-sided** and must never be presented as unique (the test suite asserts the fit lands on the truth *or its mirror*). A second degeneracy rides along: **along-track position trades against the timeline offset** (sliding the position down-track is absorbed by shifting the clock), so single-pass results should be read as a family, not a point. Only aircraft on different headings collapse the ambiguity; the joint fit test recovers the true position to **~200 m** from noisy synthetic curves (1 Hz noise, two crossing aircraft at 3 km altitude).
 
 ## Honest requirements & limitations
 

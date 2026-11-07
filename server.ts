@@ -484,6 +484,54 @@ async function startServer() {
     }
   });
 
+  // adsb.lol current-states proxy for the Acoustic module's live sky-watch.
+  // Free public endpoint, no key; short cache so rapid polls stay polite.
+  // NOTE (honest constraint): this returns CURRENT positions — a single
+  // snapshot cannot constrain a recorder position; the sky-watch mode is for
+  // clips captured while polling. Historical tracks stay import-first.
+  let adsbCache: { at: number; body: unknown } | null = null;
+  app.get('/api/osint/adsb', async (req, res) => {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const radiusKm = Number(req.query.radiusKm ?? 50);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+      res.status(400).json({ error: 'Valid lat/lon required' });
+      return;
+    }
+    if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 400) {
+      res.status(400).json({ error: 'radiusKm must be 1..400' });
+      return;
+    }
+    if (adsbCache && Date.now() - adsbCache.at < 5000) {
+      res.json(adsbCache.body);
+      return;
+    }
+    const radiusNm = Math.min(250, Math.max(1, Math.round(radiusKm / 1.852)));
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const upstream = await fetch(
+        `https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radiusNm}`,
+        {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)' },
+        }
+      );
+      clearTimeout(timeout);
+      if (!upstream.ok) {
+        res.status(502).json({ error: `adsb.lol returned HTTP ${upstream.status}` });
+        return;
+      }
+      const body = await upstream.json();
+      adsbCache = { at: Date.now(), body };
+      res.json(body);
+    } catch (err) {
+      res.status(502).json({
+        error: `adsb.lol unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

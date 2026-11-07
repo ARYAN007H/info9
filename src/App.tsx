@@ -21,6 +21,7 @@ import { IdentitySweepModule } from './components/IdentitySweepModule';
 import { InvestigationRunModule } from './components/InvestigationRunModule';
 import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
 import { FaceReconModule } from './components/FaceReconModule';
+import { AcousticDopplerModule } from './components/AcousticDopplerModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 
 const STORAGE_KEY = 'argon_osint_workspace_v2';
@@ -347,6 +348,19 @@ export function App() {
             {activeModule === 'face' && (
               <FaceReconModule
                 activeCase={workspaceCase}
+                onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'acoustic' && (
+              <AcousticDopplerModule
+                activeCase={workspaceCase}
+                onUpdateGeoState={(geoUpdater) =>
+                  setWorkspaceCase((prev) => ({
+                    ...prev,
+                    geoState: geoUpdater(prev.geoState),
+                  }))
+                }
                 onAppendLedger={handleAppendLedger}
               />
             )}

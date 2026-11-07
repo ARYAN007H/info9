@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   combineFits,
+  decimateCurve,
   distanceMeters,
   dopplerFrequency,
+  filterCurveByMagnitude,
   fitRecorderPosition,
   fitRecorderPositionMulti,
+  mergeTracks,
   parseAdsbLolStates,
   parseOpenSkyStates,
   parseTrackCsv,
@@ -218,4 +221,68 @@ test('combineFits weights low-RMS fits higher (kept for UI summaries)', () => {
   assert.ok(combined.lat > 51.5);
   assert.ok(distanceMeters(combined, good) < distanceMeters(combined, bad));
   assert.throws(() => combineFits([]), /no usable fits/);
+});
+
+test('mergeTracks accumulates poll snapshots per aircraft, strictly newer only', () => {
+  const base: AircraftTrack[] = [
+    {
+      icao: 'a1',
+      points: [
+        { tSec: 10, lat: 51.0, lon: 0.0, altM: 3000 },
+        { tSec: 15, lat: 51.01, lon: 0.001, altM: 3000 },
+      ],
+    },
+  ];
+  const snapshot: AircraftTrack[] = [
+    {
+      icao: 'a1',
+      callsign: 'TEST01',
+      points: [
+        // jittered/duplicate older point must be dropped; newer kept
+        { tSec: 14, lat: 99, lon: 99, altM: 0 },
+        { tSec: 20, lat: 51.02, lon: 0.002, altM: 3000 },
+      ],
+    },
+    { icao: 'b2', points: [{ tSec: 20, lat: 51.5, lon: -0.1, altM: 9000 }] },
+  ];
+  const merged = mergeTracks(base, snapshot);
+  assert.equal(merged.length, 2);
+  const a1 = merged.find((t) => t.icao === 'a1')!;
+  assert.deepEqual(a1.points.map((p) => p.tSec), [10, 15, 20]);
+  assert.equal(a1.callsign, 'TEST01', 'callsign adopted when missing');
+  const b2 = merged.find((t) => t.icao === 'b2')!;
+  assert.equal(b2.points.length, 1);
+  // original inputs untouched
+  assert.equal(base[0].points.length, 2);
+});
+
+test('filterCurveByMagnitude keeps only samples near the strongest peak', () => {
+  const curve = [
+    { tSec: 0, freqHz: 600, magnitude: 10 },
+    { tSec: 1, freqHz: 601, magnitude: 0.5 },
+    { tSec: 2, freqHz: 602, magnitude: 8 },
+    { tSec: 3, freqHz: 603, magnitude: 0.1 },
+  ];
+  assert.deepEqual(
+    filterCurveByMagnitude(curve, 0.25).map((s) => s.tSec),
+    [0, 2]
+  );
+  assert.equal(filterCurveByMagnitude([], 0.1).length, 0);
+  assert.equal(
+    filterCurveByMagnitude([{ tSec: 0, freqHz: 1, magnitude: 0 }], 0.5).length,
+    0,
+    'all-zero magnitudes yield nothing rather than everything'
+  );
+});
+
+test('decimateCurve bounds the sample rate without losing the sweep ends', () => {
+  // 100 samples at 10 Hz
+  const curve = Array.from({ length: 100 }, (_, i) => ({ tSec: i / 10, freqHz: 600 + i }));
+  const out = decimateCurve(curve, 2);
+  assert.ok(out.length <= 100 / 2 + 2, `expected ~50, got ${out.length}`);
+  assert.equal(out[0].tSec, 0);
+  assert.equal(out[out.length - 1].tSec, 9.9, 'last sample kept');
+  // already-sparser curves pass through untouched
+  const sparse = curve.filter((_, i) => i % 10 === 0);
+  assert.equal(decimateCurve(sparse, 2).length, sparse.length);
 });

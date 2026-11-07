@@ -550,29 +550,48 @@ export function fitRecorderPositionMulti(
   const coarseGrid = squareGrid(center, full.radiusKm, full.stepKm);
   const coarse = evaluateJoint(pairs, coarseGrid, offsets, full.altCandidatesM, c);
 
-  // refine pass around the coarse minimum
-  const refineGrid = squareGrid(
-    { lat: coarse.lat, lon: coarse.lon },
-    full.stepKm * 1.5,
-    full.stepKm / 5
-  );
-  const refineOffsets: number[] = [];
-  for (
-    let o = coarse.offsetSec - full.offsetStepSec;
-    o <= coarse.offsetSec + full.offsetStepSec + 1e-9;
-    o += Math.max(0.25, full.offsetStepSec / 4)
-  ) {
-    refineOffsets.push(Number(o.toFixed(3)));
+  // Progressive refinement. Each stage tightens the spatial grid AND re-opens
+  // the timeline-offset search around the previous best. The offset window per
+  // stage scales with the stage's spatial radius: on a single straight pass,
+  // along-track position and the timeline offset are jointly weakly
+  // constrained (offset ≈ Δalong/v_ref), so a narrow offset window would
+  // freeze the coarse grid's quantization into the final answer instead of
+  // letting the fit walk down the degeneracy valley. Never searched beyond
+  // the analyst's declared window.
+  let current = coarse;
+  const refineStages = [
+    { radiusKm: full.stepKm * 1.5, stepKm: full.stepKm / 5 },
+    { radiusKm: full.stepKm * 0.3, stepKm: Math.max(0.05, full.stepKm / 25) },
+  ];
+  for (const stage of refineStages) {
+    const offsetSpread = Math.min(
+      full.offsetWindowSec,
+      Math.max(full.offsetStepSec, (stage.radiusKm * 1000) / 250)
+    );
+    const stageOffsets: number[] = [];
+    for (
+      let o = Math.max(-full.offsetWindowSec, current.offsetSec - offsetSpread);
+      o <= Math.min(full.offsetWindowSec, current.offsetSec + offsetSpread) + 1e-9;
+      o += Math.max(0.25, full.offsetStepSec / 4)
+    ) {
+      stageOffsets.push(Number(o.toFixed(3)));
+    }
+    current = evaluateJoint(
+      pairs,
+      squareGrid({ lat: current.lat, lon: current.lon }, stage.radiusKm, stage.stepKm),
+      stageOffsets,
+      full.altCandidatesM,
+      c
+    );
   }
-  const refined = evaluateJoint(pairs, refineGrid, refineOffsets, full.altCandidatesM, c);
 
   return {
-    lat: refined.lat,
-    lon: refined.lon,
+    lat: current.lat,
+    lon: current.lon,
     altM: 0,
-    f0Hz: refined.f0Hz,
-    timeOffsetSec: refined.offsetSec,
-    rmsHz: refined.rmsHz,
+    f0Hz: current.f0Hz,
+    timeOffsetSec: current.offsetSec,
+    rmsHz: current.rmsHz,
     samples: pairs.reduce((s, p) => s + p.measured.length, 0),
     icaos: pairs.map((p) => p.track.icao),
   };
@@ -622,4 +641,77 @@ function centroidOf(tracks: AircraftTrack[]): { lat: number; lon: number } {
     lat: centroids.reduce((s, c) => s + c.lat, 0) / centroids.length,
     lon: centroids.reduce((s, c) => s + c.lon, 0) / centroids.length,
   };
+}
+
+// ---------------------------------------------------------------------------
+// UI-session helpers: live sky-watch accumulation & curve curation
+// ---------------------------------------------------------------------------
+
+/**
+ * Merges a fresh snapshot of per-aircraft single points (e.g. successive
+ * adsb.lol polls during a live capture) into the accumulated track set.
+ * Points are appended only when strictly newer than the track's last point
+ * (poll clocks can jitter), and each track stays sorted by time. New
+ * aircraft are appended as fresh tracks; a later snapshot's callsign is
+ * adopted when the existing track has none.
+ */
+export function mergeTracks(
+  existing: AircraftTrack[],
+  incoming: AircraftTrack[]
+): AircraftTrack[] {
+  const byIcao = new Map<string, AircraftTrack>();
+  for (const track of existing) byIcao.set(track.icao, { ...track, points: [...track.points] });
+  for (const snap of incoming) {
+    const current = byIcao.get(snap.icao);
+    if (!current) {
+      byIcao.set(snap.icao, { ...snap, points: [...snap.points] });
+      continue;
+    }
+    if (!current.callsign && snap.callsign) current.callsign = snap.callsign;
+    for (const point of snap.points) {
+      const last = current.points[current.points.length - 1];
+      if (last && point.tSec <= last.tSec) continue;
+      current.points.push(point);
+    }
+    current.points.sort((a, b) => a.tSec - b.tSec);
+  }
+  return [...byIcao.values()];
+}
+
+/** A measured curve sample that also carries its spectral magnitude. */
+export interface MagnitudeSample extends MeasuredSample {
+  magnitude: number;
+}
+
+/**
+ * Keeps only samples whose spectral magnitude clears `minFraction` of the
+ * curve's strongest sample — drops silence/noise frames the peak tracker
+ * would otherwise feed to the fit as fake data. Empty curves stay empty.
+ */
+export function filterCurveByMagnitude(
+  curve: MagnitudeSample[],
+  minFraction: number
+): MagnitudeSample[] {
+  if (curve.length === 0) return [];
+  const maxMag = curve.reduce((m, s) => Math.max(m, s.magnitude), 0);
+  if (maxMag <= 0) return [];
+  return curve.filter((s) => s.magnitude >= minFraction * maxMag);
+}
+
+/**
+ * Uniform stride decimation of a measured curve down to at most `maxHz`
+ * samples per second — bounds the fit's cost without biasing it (stride
+ * sampling preserves the sweep shape for quasi-stationary tones).
+ */
+export function decimateCurve<T extends MeasuredSample>(
+  curve: T[],
+  maxHz: number,
+  sampleRateHintHz = 1 / Math.max(1e-6, (curve[1]?.tSec ?? curve[0]?.tSec ?? 0) - (curve[0]?.tSec ?? 0))
+): T[] {
+  if (curve.length <= 2) return curve;
+  const spacingHz = 1 / Math.max(1e-6, sampleRateHintHz);
+  if (spacingHz >= 1 / maxHz) return curve;
+  const stride = Math.max(1, Math.floor(1 / (maxHz * spacingHz)));
+  if (stride <= 1) return curve;
+  return curve.filter((_, i) => i % stride === 0 || i === curve.length - 1);
 }

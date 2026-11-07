@@ -6,7 +6,8 @@ export type ModuleId =
   | 'identity'
   | 'investigate'
   | 'sanctions'
-  | 'face';
+  | 'face'
+  | 'acoustic';
 
 export type EntityType =
   | 'company'

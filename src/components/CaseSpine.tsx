@@ -27,6 +27,9 @@ function moduleCounts(activeCase: InvestigationCase): Record<ModuleId, number> {
     ).length,
     face: activeCase.evidenceLedger.filter((entry) => entry.module === 'face')
       .length,
+    acoustic: activeCase.evidenceLedger.filter(
+      (entry) => entry.module === 'acoustic'
+    ).length,
   };
 }
 

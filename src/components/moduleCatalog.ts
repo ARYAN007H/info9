@@ -70,6 +70,13 @@ export const MODULE_CATALOG: Record<ModuleId, ModuleCatalogEntry> = {
     shortName: 'FAC',
     job: 'Local face embeddings: verify against named portraits, sweep avatars, cluster a corpus.',
   },
+  acoustic: {
+    id: 'acoustic',
+    num: '09',
+    name: 'Acoustic',
+    shortName: 'ACU',
+    job: 'Geolocate a recording from aircraft Doppler curves matched to ADS-B tracks.',
+  },
 };
 
 export const MODULE_ORDER: ModuleId[] = [
@@ -81,4 +88,5 @@ export const MODULE_ORDER: ModuleId[] = [
   'investigate',
   'sanctions',
   'face',
+  'acoustic',
 ];
