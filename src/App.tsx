@@ -20,6 +20,7 @@ import { MediaForensicsModule } from './components/MediaForensicsModule';
 import { IdentitySweepModule } from './components/IdentitySweepModule';
 import { InvestigationRunModule } from './components/InvestigationRunModule';
 import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
+import { FaceReconModule } from './components/FaceReconModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 
 const STORAGE_KEY = 'argon_osint_workspace_v2';
@@ -340,6 +341,13 @@ export function App() {
                 }
                 onAppendLedger={handleAppendLedger}
                 onExportMarkdown={handleExportSignedDossier}
+              />
+            )}
+
+            {activeModule === 'face' && (
+              <FaceReconModule
+                activeCase={workspaceCase}
+                onAppendLedger={handleAppendLedger}
               />
             )}
           </div>

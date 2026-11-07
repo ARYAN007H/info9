@@ -3,7 +3,7 @@
 <img src="docs/banner.svg" alt="info9 — Argon OSINT Workbench" width="100%"/>
 
 **A zero-key, free & open-source intelligence workbench.**
-Five specialist modules — geolocation, corporate unwrapping, infrastructure recon, media forensics, sanctions screening — running entirely on public data sources and in-browser computation. No paid API keys. No accounts. No subscription.
+Eight specialist instruments — geolocation, corporate unwrapping, infrastructure recon, media forensics, identity sweep, pivot chains, watchlist screening, face recon — running entirely on public data sources and in-browser computation. No paid API keys. No accounts. No subscription.
 
 [![CI](https://github.com/ARYAN007H/info9/actions/workflows/ci.yml/badge.svg)](https://github.com/ARYAN007H/info9/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -23,7 +23,7 @@ Most OSINT tooling is either a paid SaaS (Maltego, DomainTools), a pile of scatt
 - **Keeps an evidence trail.** Every finding is written into a SHA-256 hash-chained ledger with Merkle-root integrity verification, exportable as STIX 2.1.
 - **Runs where you need it.** One `npm` command, or one `docker compose up`. Your queries never touch a third-party aggregation service.
 
-## The five modules
+## The modules
 
 | Module | What it does | Live data sources |
 |---|---|---|
@@ -33,6 +33,8 @@ Most OSINT tooling is either a paid SaaS (Maltego, DomainTools), a pile of scatt
 | **04 · Media & Video Forensics** | In-browser DSP lab: Error Level Analysis, copy-move clone detection with displacement vectors, noise variance maps, JPEG ghost quality sweeps, 8× pixel loupe, live RGB histograms, EXIF integrity review | 100% client-side computation |
 | **05 · Identity & Usernames** | Sweep a handle across ~700 community-indexed sites (WhatsMyName dataset) with per-probe detection strings; hits ranked and flagged for visual verification; SSRF-hardened probe checking | WhatsMyName dataset (free, community-maintained) |
 | **06 · Sanctions & Evidence Ledger** | Name matching across scripts (Cyrillic/diacritic transliteration + Jaro-Winkler + Soundex + token-set) with Bayesian posterior scoring; **live screening against the real OFAC SDN list** (free Treasury CSV, parsed and cached server-side); every module finding lands in a hash-chained, tamper-evident evidence ledger with STIX 2.1 export | Live OFAC SDN CSV (U.S. Treasury) · bundled demo set for offline use |
+| **07 · Watchlist** | Cross-script sanctions and PEP matching against the live list with fully disclosed scoring factors and dispositions | Live OFAC SDN CSV |
+| **08 · Face Recon** | **On-device face matching**: local detection + deep face descriptors (nothing uploaded), ranked similarity against a reference corpus — username avatar sweeps, named-person portrait verification via Wikidata P18, or analyst-supplied image folders — plus same-person clustering; honest heuristic bands, never proof of identity | unavatar.io, GitHub avatars, Wikidata/Commons · 100% local inference |
 
 ## Architecture
 

@@ -423,6 +423,67 @@ async function startServer() {
     }
   });
 
+  // Image proxy for the Face Recon bench: reference portraits (avatars,
+  // Wikidata P18 renders) whose origins don't send CORS headers. SSRF-guarded:
+  // http(s) only, private/loopback hosts blocked, images only, hard size cap.
+  const FORBIDDEN_IMAGE_HOSTS =
+    /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[::1\]|\[fc|\[fd)/i;
+  app.get('/api/osint/image-proxy', async (req, res) => {
+    const targetUrl = String(req.query.url || '').trim();
+    if (!targetUrl || targetUrl.length > 600) {
+      res.status(400).json({ error: 'Valid url parameter required' });
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      res.status(400).json({ error: 'Malformed url parameter' });
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      res.status(400).json({ error: 'Only http(s) URLs are proxied' });
+      return;
+    }
+    if (FORBIDDEN_IMAGE_HOSTS.test(parsed.hostname)) {
+      res.status(400).json({ error: 'Private network hosts are not proxied' });
+      return;
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const upstream = await fetch(parsed.toString(), {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)',
+          Accept: 'image/*',
+        },
+      });
+      const contentType = upstream.headers.get('content-type') ?? '';
+      if (!upstream.ok || !contentType.startsWith('image/')) {
+        clearTimeout(timeout);
+        res
+          .status(502)
+          .json({ error: `Upstream did not return an image (HTTP ${upstream.status}, ${contentType || 'no type'})` });
+        return;
+      }
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      clearTimeout(timeout);
+      if (buffer.byteLength > 8 * 1024 * 1024) {
+        res.status(413).json({ error: 'Image exceeds the 8 MB proxy cap' });
+        return;
+      }
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'private, max-age=600');
+      res.send(buffer);
+    } catch (err) {
+      res.status(502).json({
+        error: `Image fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

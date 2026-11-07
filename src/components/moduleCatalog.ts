@@ -63,6 +63,13 @@ export const MODULE_CATALOG: Record<ModuleId, ModuleCatalogEntry> = {
     shortName: 'WAT',
     job: 'Cross-script sanctions and PEP matching with fully disclosed scoring.',
   },
+  face: {
+    id: 'face',
+    num: '08',
+    name: 'Face Recon',
+    shortName: 'FAC',
+    job: 'Local face embeddings: verify against named portraits, sweep avatars, cluster a corpus.',
+  },
 };
 
 export const MODULE_ORDER: ModuleId[] = [
@@ -73,4 +80,5 @@ export const MODULE_ORDER: ModuleId[] = [
   'identity',
   'investigate',
   'sanctions',
+  'face',
 ];
