@@ -308,6 +308,27 @@ export interface SanctionsScoredResult {
   eliminationReasons: string[];
 }
 
+export interface SubdomainProbeResult {
+  subdomain: string;
+  aRecords: string[];
+  cnameTarget: string | null;
+  subnet24: string | null;
+  takeoverRisk: {
+    vulnerable: boolean;
+    provider: string | null;
+    reason: string;
+  };
+}
+
+export interface CameraFeaturePin {
+  id: string;
+  label: string;
+  xRatio: number;
+  yRatio: number;
+  computedBearingDeg: number;
+  color: string;
+}
+
 export interface EvidenceLedgerEntry {
   index: number;
   id: string;
@@ -318,6 +339,10 @@ export interface EvidenceLedgerEntry {
   sourceUrl: string;
   previousHash: string;
   sha256Hash: string;
+  /** Optional visual canvas/map snapshot (data URL) captured at recording time */
+  snapshotDataUrl?: string;
+  /** Optional SHA-256 hex digest of the snapshot payload */
+  snapshotHash?: string;
 }
 
 export interface InvestigationCase {

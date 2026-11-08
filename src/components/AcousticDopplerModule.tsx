@@ -43,6 +43,7 @@ interface AcousticDopplerModuleProps {
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    snapshotDataUrl?: string;
   }) => void;
 }
 
@@ -535,11 +536,19 @@ export const AcousticDopplerModule: React.FC<AcousticDopplerModuleProps> = ({
 
   const saveToCase = useCallback(() => {
     if (!fit || !audioName) return;
+    let snapshotDataUrl: string | undefined;
+    try {
+      snapshotDataUrl =
+        specCanvasRef.current?.toDataURL('image/webp', 0.75) ?? undefined;
+    } catch {
+      snapshotDataUrl = undefined;
+    }
     onAppendLedger({
       module: 'acoustic',
       targetLabel: audioName,
       findingSummary: `Acoustic Doppler fit from ${fit.icaos.length} aircraft track(s) [${fit.icaos.join(', ')}]: recorder at ${fit.lat.toFixed(5)}, ${fit.lon.toFixed(5)} · f0 ${fit.f0Hz.toFixed(1)} Hz · timeline offset ${fit.timeOffsetSec.toFixed(2)} s · RMS residual ${fit.rmsHz.toFixed(2)} Hz over ${fit.samples} samples. ${fit.icaos.length === 1 ? 'SINGLE-AIRCRAFT FIT — the position has a mirror ambiguity about the flight track; treat as two-sided.' : 'Joint fit — independent headings collapse the single-pass mirror ambiguity, but corroborate before treating as unique.'} Heuristic estimate, not evidence — corroborate with ground truth.`,
       sourceUrl: 'local://acoustic-doppler',
+      snapshotDataUrl,
     });
   }, [fit, audioName, onAppendLedger]);
 
@@ -579,12 +588,12 @@ export const AcousticDopplerModule: React.FC<AcousticDopplerModuleProps> = ({
           <Panel
             tag="A"
             title="Recording"
-            description="Upload the clip — decode, STFT and fitting all run locally; nothing is uploaded."
+            description="Upload an audio or video clip — decode, STFT and fitting all run locally; nothing is uploaded."
             actions={
               <label>
                 <input
                   type="file"
-                  accept="audio/*,video/*,.wav,.mp3,.m4a,.ogg,.webm,.mp4"
+                  accept="audio/*,video/*,.wav,.mp3,.m4a,.ogg,.webm,.mp4,.mov"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
@@ -594,7 +603,7 @@ export const AcousticDopplerModule: React.FC<AcousticDopplerModuleProps> = ({
                 />
                 <span className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded border border-line bg-well px-2.5 text-xs font-medium text-ink hover:border-accent">
                   {audioBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Waves className="h-3.5 w-3.5" />}
-                  Upload audio
+                  Upload audio / video
                 </span>
               </label>
             }

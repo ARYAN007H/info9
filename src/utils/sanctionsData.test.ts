@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildTrigramCandidateIndex,
   extractDobFromRemarks,
+  parseBatchScreeningInput,
   parseOfacSdnCsv,
+  queryTrigramIndex,
   splitCsvLine,
   toSanctionsCandidates,
 } from './sanctionsData';
@@ -52,3 +55,30 @@ test('toSanctionsCandidates maps types and keeps provenance identifiers', () => 
   assert.equal(candidates[0].listSource, 'OFAC_SDN');
   assert.match(candidates[0].identifierCode, /^OFAC-SDN-4731$/);
 });
+
+test('parseBatchScreeningInput parses CSV and multi-line rows while skipping headers', () => {
+  const rows = parseBatchScreeningInput(
+    [
+      'name,dob,country',
+      '"Viktor Morozov",1968-04-14,Russia',
+      'Vega Maritime Holdings,,Marshall Islands',
+      '# comment line',
+      'Trafigura Group',
+    ].join('\n')
+  );
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].targetName, 'Viktor Morozov');
+  assert.equal(rows[0].targetDob, '1968-04-14');
+  assert.equal(rows[1].targetJurisdiction, 'Marshall Islands');
+  assert.equal(rows[2].targetName, 'Trafigura Group');
+});
+
+test('buildTrigramCandidateIndex and queryTrigramIndex retrieve matching candidates first', () => {
+  const records = parseOfacSdnCsv(SAMPLE_CSV);
+  const candidates = toSanctionsCandidates(records);
+  const idx = buildTrigramCandidateIndex(candidates);
+  const top = queryTrigramIndex(idx, 'Vega Maritime', 2);
+  assert.ok(top.length >= 1);
+  assert.equal(top[0].listedName, 'VEGA MARITIME HOLDINGS LTD');
+});
+

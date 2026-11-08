@@ -8,3 +8,6 @@ export { EmptyState } from './EmptyState';
 export { DataValue, DataLabel } from './DataValue';
 export { KeyValueTable } from './KeyValueTable';
 export type { KeyValueRow } from './KeyValueTable';
+export { PivotChip } from './PivotChip';
+export type { PivotChipProps } from './PivotChip';
+

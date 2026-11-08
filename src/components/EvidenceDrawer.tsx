@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { ChevronUp, Download, FileWarning, Link2, Printer, ShieldCheck } from 'lucide-react';
+import {
+  ChevronUp,
+  Download,
+  EyeOff,
+  FileWarning,
+  Image as ImageIcon,
+  Link2,
+  Printer,
+  ShieldCheck,
+} from 'lucide-react';
 import type { EvidenceLedgerEntry } from '../types/osint';
 import { verifyEvidenceLedgerChain } from '../utils/osintForensics';
 import { MODULE_CATALOG } from './moduleCatalog';
@@ -10,14 +19,21 @@ interface EvidenceDrawerProps {
   onExport: () => void;
   onExportMisp?: () => void;
   onPrintReport?: () => void;
+  onOpenReportBuilder?: () => void;
 }
 
 /**
  * The evidence drawer: the hash-chained ledger, always one click away from
  * any module. Findings pinned anywhere on the bench land here with a
- * verifiable receipt.
+ * verifiable receipt and optional visual snapshot.
  */
-export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport }: EvidenceDrawerProps) {
+export function EvidenceDrawer({
+  entries,
+  onExport,
+  onExportMisp,
+  onPrintReport,
+  onOpenReportBuilder,
+}: EvidenceDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const chain = useMemo(() => verifyEvidenceLedgerChain(entries), [entries]);
 
@@ -75,6 +91,17 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
         </button>
         {chainChip}
         <div className="ml-auto flex items-center gap-2">
+          {onOpenReportBuilder && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<EyeOff className="h-3.5 w-3.5" />}
+              onClick={onOpenReportBuilder}
+              title="Configure PII redaction masks and executive commentary before exporting"
+            >
+              Redact &amp; build
+            </Button>
+          )}
           {onPrintReport && (
             <Button
               size="sm"
@@ -97,7 +124,12 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
               MISP
             </Button>
           )}
-          <Button size="sm" variant="solid" icon={<Download className="h-3.5 w-3.5" />} onClick={onExport}>
+          <Button
+            size="sm"
+            variant="solid"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={onExport}
+          >
             Export case report
           </Button>
         </div>
@@ -112,8 +144,8 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
               hint="Findings you pin from any module land here as hash-chained ledger blocks, exportable with the case report."
             />
           ) : (
-            <div className="max-h-56 overflow-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left text-xs">
+            <div className="max-h-60 overflow-auto">
+              <table className="w-full min-w-[760px] border-collapse text-left text-xs">
                 <thead>
                   <tr className="border-b border-line text-[10px] font-semibold text-ink-3">
                     <th scope="col" className="px-4 py-1.5 font-semibold">
@@ -129,7 +161,7 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
                       Target
                     </th>
                     <th scope="col" className="px-3 py-1.5 font-semibold">
-                      Finding
+                      Finding &amp; Snapshot
                     </th>
                     <th scope="col" className="px-3 py-1.5 font-semibold">
                       SHA-256
@@ -158,7 +190,10 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
                             {mod.num} · {mod.shortName}
                           </span>
                         </td>
-                        <td className="max-w-[180px] truncate px-3 py-1.5 font-medium text-ink" title={entry.targetLabel}>
+                        <td
+                          className="max-w-[180px] truncate px-3 py-1.5 font-medium text-ink"
+                          title={entry.targetLabel}
+                        >
                           {entry.sourceUrl ? (
                             <a
                               href={entry.sourceUrl}
@@ -174,10 +209,28 @@ export function EvidenceDrawer({ entries, onExport, onExportMisp, onPrintReport 
                           )}
                         </td>
                         <td
-                          className="max-w-[340px] truncate px-3 py-1.5 text-ink-2"
+                          className="max-w-[380px] px-3 py-1.5 text-ink-2"
                           title={entry.findingSummary}
                         >
-                          {entry.findingSummary}
+                          <div className="flex items-center gap-2">
+                            {entry.snapshotDataUrl && (
+                              <img
+                                src={entry.snapshotDataUrl}
+                                alt={`Snapshot #${entry.index}`}
+                                className="h-8 w-12 shrink-0 rounded border border-line object-cover"
+                              />
+                            )}
+                            <span className="truncate">{entry.findingSummary}</span>
+                            {entry.snapshotDataUrl && (
+                              <span
+                                title={`Snapshot SHA-256: ${entry.snapshotHash ?? ''}`}
+                                className="inline-flex shrink-0 items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 font-mono text-[9px] text-accent"
+                              >
+                                <ImageIcon className="h-2.5 w-2.5" />
+                                IMG
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td
                           className="px-3 py-1.5 font-mono text-[11px] text-ink-3"

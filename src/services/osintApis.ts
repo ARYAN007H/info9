@@ -10,6 +10,7 @@ import type {
   OwnershipEdge,
   RipeBgpOverviewData,
   ShodanInternetDbData,
+  SubdomainProbeResult,
   VisionGeolocationResult,
   WeatherVerificationData,
 } from '../types/osint';
@@ -21,6 +22,11 @@ import {
   haversineDistanceKm,
   projectBearingCoordinate,
 } from '../utils/solarMath';
+import {
+  detectSubdomainTakeoverRisk,
+  ipv4ToSubnet24,
+} from '../utils/infraAdvanced';
+import { analyzeEmailClue, type EmailReconProfile } from '../utils/contactRecon';
 
 /**
  * Fetch an upstream that browsers can only reach through the local proxy
@@ -1191,3 +1197,96 @@ export async function checkWaybackArchivalHistory(targetUrl: string): Promise<{
     captures: [],
   };
 }
+
+/**
+ * 10. Batch Subdomain Live Resolution & Takeover Risk Scanner (Cloudflare DoH)
+ */
+export async function probeSubdomainsLive(
+  subdomains: string[]
+): Promise<SubdomainProbeResult[]> {
+  const unique = Array.from(
+    new Set(
+      subdomains
+        .map((s) => s.trim().toLowerCase().replace(/^\*\./, ''))
+        .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(s))
+    )
+  ).slice(0, 16);
+
+  const probes = await Promise.all(
+    unique.map(async (sub): Promise<SubdomainProbeResult> => {
+      const [aRecordsRaw, cnameRaw] = await Promise.all([
+        queryCloudflareDoh(sub, 'A'),
+        queryCloudflareDoh(sub, 'CNAME'),
+      ]);
+      const ipv4s = aRecordsRaw.filter((r) => /^\d+\.\d+\.\d+\.\d+$/.test(r));
+      const cnameTarget = cnameRaw[0] || null;
+      const subnet24 = ipv4ToSubnet24(ipv4s[0]);
+      const takeoverRisk = detectSubdomainTakeoverRisk(sub, cnameTarget, ipv4s);
+      return {
+        subdomain: sub,
+        aRecords: ipv4s,
+        cnameTarget,
+        subnet24,
+        takeoverRisk,
+      };
+    })
+  );
+  return probes;
+}
+
+export interface LiveEmailReconResult {
+  profile: EmailReconProfile;
+  mxRecords: string[];
+  hasSpf: boolean;
+  dmarcPolicy: string | null;
+  hasGravatar: boolean;
+  gravatarUrl: string | null;
+  hasOpenPgpKey: boolean;
+  openPgpUrl: string | null;
+  githubLogins: string[];
+  fetchedAtUtc: string;
+}
+
+/**
+ * 11. Zero-Key Email OSINT Recon (Gravatar MD5, OpenPGP keyserver, GitHub search, Domain MX/SPF/DMARC)
+ */
+export async function probeEmailOsintLive(
+  rawEmail: string
+): Promise<LiveEmailReconResult> {
+  const profile = analyzeEmailClue(rawEmail);
+  if (!profile) {
+    throw new Error('Enter a valid email address (e.g. analyst@example.org)');
+  }
+
+  const [mxRecords, txtRecords, dmarcTxt, serverCheck] = await Promise.all([
+    queryCloudflareDoh(profile.domain, 'MX'),
+    queryCloudflareDoh(profile.domain, 'TXT'),
+    queryCloudflareDoh(`_dmarc.${profile.domain}`, 'TXT'),
+    fetch(
+      `/api/osint/email-recon?email=${encodeURIComponent(
+        profile.email
+      )}&md5=${encodeURIComponent(profile.gravatarMd5)}`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+  ]);
+
+  const hasSpf = txtRecords.some((t) => /v=spf1/i.test(t));
+  const dmarcPolicy = dmarcTxt.find((t) => /v=DMARC1/i.test(t)) || null;
+
+  return {
+    profile,
+    mxRecords,
+    hasSpf,
+    dmarcPolicy,
+    hasGravatar: Boolean(serverCheck?.hasGravatar),
+    gravatarUrl: serverCheck?.gravatarUrl || null,
+    hasOpenPgpKey: Boolean(serverCheck?.hasOpenPgpKey),
+    openPgpUrl: serverCheck?.openPgpUrl || null,
+    githubLogins: Array.isArray(serverCheck?.githubLogins)
+      ? serverCheck.githubLogins
+      : [],
+    fetchedAtUtc: serverCheck?.fetchedAtUtc || new Date().toISOString(),
+  };
+}
+

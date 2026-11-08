@@ -29,10 +29,12 @@ import {
   FieldLabel,
   NoticeBanner,
   Panel,
+  PivotChip,
   SegmentedTabs,
   TextField,
   Well,
 } from './ui';
+import type { SmartRouteAction } from '../utils/smartIntake';
 
 interface SanctionsLedgerModuleProps {
   activeCase: InvestigationCase;
@@ -46,8 +48,10 @@ interface SanctionsLedgerModuleProps {
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    snapshotDataUrl?: string;
   }) => void;
   onExportMarkdown?: () => void;
+  onPivot?: (action: SmartRouteAction) => void;
 }
 
 const DISPOSITION_STYLES: Record<
@@ -76,6 +80,7 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
   onUpdateSanctionsQuery,
   onAppendLedger,
   onExportMarkdown,
+  onPivot,
 }) => {
   const { sanctionsQuery, evidenceLedger } = activeCase;
 
@@ -165,7 +170,19 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
   return (
     <div className="space-y-4">
       {/* Live OFAC SDN screening — the real Treasury list, zero keys */}
-      <OfacLiveScreening />
+      <OfacLiveScreening
+        onRecordHit={(hit) => {
+          onAppendLedger({
+            module: 'sanctions',
+            targetLabel: `${hit.listedName} (${hit.identifierCode})`,
+            findingSummary: `Live OFAC SDN Screening [${hit.program}]: ${hit.disposition} (${hit.compositeScore}% match)${hit.queryTarget ? ` for query "${hit.queryTarget}"` : ''}.`,
+            sourceUrl: 'https://sanctionssearch.ofac.treas.gov/',
+          });
+          setStatusMessage(
+            `Recorded live OFAC screening finding for "${hit.listedName}" to the evidence ledger.`
+          );
+        }}
+      />
 
       <Panel
         title={`${MODULE_CATALOG.sanctions.name} screening — sample dataset`}
@@ -327,9 +344,15 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
                           <DataValue className="text-[11px] text-ink-3">
                             {res.candidate.listSource} · {res.candidate.identifierCode}
                           </DataValue>
-                          <h4 className="mt-0.5 text-sm font-semibold text-ink">
-                            {res.candidate.listedName}
-                          </h4>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            <h4 className="text-sm font-semibold text-ink">
+                              {res.candidate.listedName}
+                            </h4>
+                            <PivotChip
+                              value={res.candidate.listedName}
+                              onSelectAction={onPivot}
+                            />
+                          </div>
                           <DataValue className="mt-0.5 block text-ink-3">
                             DOB/inc: {res.candidate.dobOrIncorporation} ·{' '}
                             {res.candidate.citizenshipOrJurisdiction}

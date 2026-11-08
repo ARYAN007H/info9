@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Archive,
   BookmarkPlus,
+  Film,
   ScanSearch,
   Sliders,
   Upload,
@@ -14,6 +14,7 @@ import {
 } from '../utils/osintForensics';
 import { checkWaybackArchivalHistory } from '../services/osintApis';
 import { MODULE_CATALOG } from './moduleCatalog';
+import { VideoFrameExtractor } from './VideoFrameExtractor';
 import {
   Button,
   DataLabel,
@@ -32,7 +33,9 @@ interface MediaForensicsModuleProps {
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    snapshotDataUrl?: string;
   }) => void;
+  initialWaybackUrl?: string;
 }
 
 type InspectionMode =
@@ -129,6 +132,7 @@ function drawProceduralForensicScene(
 export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
   activeCase,
   onAppendLedger,
+  initialWaybackUrl,
 }) => {
   const [inspectionMode, setInspectionMode] =
     useState<InspectionMode>('ela_heatmap');
@@ -137,6 +141,8 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
 
   const [uploadedImageElement, setUploadedImageElement] =
     useState<HTMLImageElement | null>(null);
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
   const [uploadedExifTags, setUploadedExifTags] = useState<
     ForensicTargetSample['exifTags'] | null
   >(null);
@@ -154,13 +160,19 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
   } | null>(null);
 
   const [waybackQueryUrl, setWaybackQueryUrl] = useState<string>(
-    'https://example.com'
+    initialWaybackUrl || 'https://example.com'
   );
   const [isCheckingWayback, setIsCheckingWayback] = useState(false);
   const [waybackResult, setWaybackResult] = useState<
     Awaited<ReturnType<typeof checkWaybackArchivalHistory>> | null
   >(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialWaybackUrl && initialWaybackUrl.trim()) {
+      setWaybackQueryUrl(initialWaybackUrl.trim());
+    }
+  }, [initialWaybackUrl]);
 
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const currentSample = activeCase.forensicSamples[0];
@@ -377,6 +389,10 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
     if (!file) return;
 
     setUploadedFileName(file.name);
+    const isVideo =
+      file.type.startsWith('video/') ||
+      /\.(mp4|webm|mov|m4v)$/i.test(file.name);
+
     const buffer = await file.arrayBuffer();
     const parsedTags = parseUploadedBinaryMetadata(
       file.name,
@@ -386,6 +402,19 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
     );
     setUploadedExifTags(parsedTags);
 
+    if (isVideo) {
+      if (uploadedVideoUrl) URL.revokeObjectURL(uploadedVideoUrl);
+      setUploadedVideoFile(file);
+      setUploadedVideoUrl(URL.createObjectURL(file));
+      setStatusMessage(
+        `Loaded video "${file.name}". Step frame-by-frame below and click "Send frame to ELA lab" to inspect any frame in the forensic canvas.`
+      );
+      return;
+    }
+
+    if (uploadedVideoUrl) URL.revokeObjectURL(uploadedVideoUrl);
+    setUploadedVideoUrl(null);
+    setUploadedVideoFile(null);
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -426,7 +455,7 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
       <Panel
         tag={MODULE_CATALOG.forensics.num}
         title={MODULE_CATALOG.forensics.name}
-        description={`${MODULE_CATALOG.forensics.job} Upload an image, or examine the bundled sample scene. All computation stays in your browser.`}
+        description={`${MODULE_CATALOG.forensics.job} Upload an image or video, or examine the bundled sample scene. All computation stays in your browser.`}
         actions={
           <>
             <Button
@@ -434,15 +463,24 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
               size="sm"
               icon={<BookmarkPlus className="h-3.5 w-3.5" />}
               onClick={() => {
+                let snapshotDataUrl: string | undefined;
+                try {
+                  snapshotDataUrl =
+                    displayCanvasRef.current?.toDataURL('image/webp', 0.75) ??
+                    undefined;
+                } catch {
+                  snapshotDataUrl = undefined;
+                }
                 onAppendLedger({
                   module: 'forensics',
                   targetLabel:
                     uploadedFileName || currentSample?.title || 'Inspected Image',
                   findingSummary: `Photo Forensics (${MODE_DESCRIPTIONS[inspectionMode].label}, Q=${jpegQuality}%): Mean Compression Difference=${elaMeanResidual}, High-Contrast Anomaly Pixels=${elaPeakRatio}%.`,
                   sourceUrl: 'local://forensics/ela-inspector',
+                  snapshotDataUrl,
                 });
                 setStatusMessage(
-                  'Forensics result recorded to the evidence ledger.'
+                  'Forensics result and visual canvas snapshot recorded to the evidence ledger.'
                 );
               }}
             >
@@ -450,20 +488,21 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
             </Button>
             <label className="inline-flex h-7 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap rounded bg-accent px-2.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-strong">
               <Upload className="h-3.5 w-3.5" />
-              <span>Upload photo</span>
+              <span>Upload photo / video</span>
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
                 onChange={handleFileUpload}
                 className="hidden"
               />
             </label>
-            {uploadedImageElement && (
+            {(uploadedImageElement || uploadedVideoFile) && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setUploadedImageElement(null);
+                  setUploadedVideoFile(null);
                   setUploadedExifTags(null);
                   setUploadedFileName(null);
                   setStatusMessage('Reset to the sample test scene.');
@@ -483,6 +522,36 @@ export const MediaForensicsModule: React.FC<MediaForensicsModuleProps> = ({
           </NoticeBanner>
         )}
       </Panel>
+
+      {uploadedVideoFile && (
+        <Panel
+          title="Video frame scrubber & keyframe extractor"
+          description="Step frame-by-frame (-1f / +1f) to isolate a crisp frame or compression boundary, then send it directly to the ELA & Clone canvas."
+          actions={
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-ink-3">
+              <Film className="h-3.5 w-3.5 text-accent" />
+              {uploadedVideoFile.name}
+            </span>
+          }
+        >
+          <VideoFrameExtractor
+            videoUrl={uploadedVideoUrl || ''}
+            fileName={uploadedVideoFile.name}
+            onClearVideo={() => {
+              if (uploadedVideoUrl) URL.revokeObjectURL(uploadedVideoUrl);
+              setUploadedVideoUrl(null);
+              setUploadedVideoFile(null);
+            }}
+            onExtractFrameToForensics={(img: HTMLImageElement, label: string) => {
+              setUploadedImageElement(img);
+              setUploadedFileName(label);
+              setStatusMessage(
+                `Extracted ${label} (${img.width}×${img.height}px) into the ELA forensic canvas.`
+              );
+            }}
+          />
+        </Panel>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
         <Panel

@@ -119,3 +119,116 @@ export function toSanctionsCandidates(
     notes: r.remarks,
   }));
 }
+
+export interface BatchScreeningRow {
+  targetName: string;
+  targetDob: string;
+  targetJurisdiction: string;
+}
+
+/**
+ * Parses multi-line or CSV batch screening rows (`Name, DOB, Jurisdiction` or `Name`).
+ * Ignores blank lines, `#` comments, and optional header rows (`name,dob,country`).
+ */
+export function parseBatchScreeningInput(
+  rawText: string,
+  maxRows = 100
+): BatchScreeningRow[] {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+  const out: BatchScreeningRow[] = [];
+  for (let i = 0; i < lines.length && out.length < maxRows; i++) {
+    const fields = splitCsvLine(lines[i]);
+    const col0 = (fields[0] || '').trim();
+    if (!col0) continue;
+    if (
+      i === 0 &&
+      /^(name|target|entity|person|subject)$/i.test(col0) &&
+      fields.length >= 2
+    ) {
+      continue;
+    }
+    out.push({
+      targetName: col0,
+      targetDob: (fields[1] || '').trim(),
+      targetJurisdiction: (fields[2] || '').trim(),
+    });
+  }
+  return out;
+}
+
+function extractNameTrigrams(raw: string): string[] {
+  const norm = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!norm) return [];
+  const padded = ` ${norm} `;
+  const grams = new Set<string>();
+  for (let i = 0; i <= padded.length - 3; i++) {
+    grams.add(padded.slice(i, i + 3));
+  }
+  return Array.from(grams);
+}
+
+export interface TrigramCandidateIndex<T extends { listedName: string }> {
+  candidates: T[];
+  postings: Map<string, number[]>;
+}
+
+/**
+ * Builds an in-memory inverted 3-gram index over a large sanctions candidate
+ * array (~20,000+ rows) so batch queries pre-filter to top candidates in <5ms.
+ */
+export function buildTrigramCandidateIndex<T extends { listedName: string }>(
+  candidates: T[]
+): TrigramCandidateIndex<T> {
+  const postings = new Map<string, number[]>();
+  for (let idx = 0; idx < candidates.length; idx++) {
+    const grams = extractNameTrigrams(candidates[idx].listedName);
+    for (const g of grams) {
+      let list = postings.get(g);
+      if (!list) {
+        list = [];
+        postings.set(g, list);
+      }
+      list.push(idx);
+    }
+  }
+  return { candidates, postings };
+}
+
+/**
+ * Returns up to `topK` candidate records sharing the highest trigram overlap
+ * with `queryName`. Falls back to the first `topK` records if no trigrams match.
+ */
+export function queryTrigramIndex<T extends { listedName: string }>(
+  index: TrigramCandidateIndex<T>,
+  queryName: string,
+  topK = 250
+): T[] {
+  const grams = extractNameTrigrams(queryName);
+  if (grams.length === 0) return index.candidates.slice(0, topK);
+
+  const hits = new Map<number, number>();
+  for (const g of grams) {
+    const list = index.postings.get(g);
+    if (!list) continue;
+    for (const docIdx of list) {
+      hits.set(docIdx, (hits.get(docIdx) || 0) + 1);
+    }
+  }
+
+  if (hits.size === 0) return index.candidates.slice(0, Math.min(80, topK));
+
+  return Array.from(hits.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([docIdx]) => index.candidates[docIdx]);
+}
+

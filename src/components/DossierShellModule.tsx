@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookmarkPlus,
   Building2,
@@ -16,6 +16,7 @@ import type {
   OsintEntity,
   OwnershipEdge,
 } from '../types/osint';
+import type { SmartRouteAction } from '../utils/smartIntake';
 import {
   expandGleifParentTransform,
   searchCorporateAndPublicEntities,
@@ -29,6 +30,7 @@ import {
   KeyValueTable,
   NoticeBanner,
   Panel,
+  PivotChip,
   SelectField,
   TextField,
   Well,
@@ -48,6 +50,8 @@ interface DossierShellModuleProps {
     findingSummary: string;
     sourceUrl: string;
   }) => void;
+  initialQuery?: string;
+  onPivot?: (action: SmartRouteAction) => void;
 }
 
 /** Screening actions keep the watchlist's amber voice everywhere. */
@@ -63,8 +67,10 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
   onAddOwnershipEdge,
   onPivotToSanctions,
   onAppendLedger,
+  initialQuery,
+  onPivot,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [isSearchingApi, setIsSearchingApi] = useState(false);
   const [isRunningTransform, setIsRunningTransform] = useState(false);
   const [apiResults, setApiResults] = useState<OsintEntity[]>([]);
@@ -119,6 +125,14 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
       setIsSearchingApi(false);
     }
   };
+
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      setSearchQuery(initialQuery.trim());
+      void runRegistrySearch(initialQuery.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -483,9 +497,12 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
                     <div className="font-mono text-[11px] uppercase tracking-wide text-ink-3">
                       {currentEntity.type} · {currentEntity.jurisdiction}
                     </div>
-                    <h2 className="mt-0.5 text-lg font-semibold text-ink">
-                      {currentEntity.label}
-                    </h2>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-semibold text-ink">
+                        {currentEntity.label}
+                      </h2>
+                      <PivotChip value={currentEntity.label} onSelectAction={onPivot} />
+                    </div>
                     <DataValue className="mt-0.5 text-ink-2">
                       {currentEntity.identifier}
                     </DataValue>

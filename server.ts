@@ -532,6 +532,71 @@ async function startServer() {
     }
   });
 
+  // Zero-key Email OSINT Recon proxy (Gravatar HEAD check, keys.openpgp.org, GitHub user search)
+  app.get('/api/osint/email-recon', async (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    const md5 = String(req.query.md5 || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@([a-z0-9-]+\.)+[a-z]{2,}$/i.test(email) || !/^[a-f0-9]{32}$/.test(md5)) {
+      res.status(400).json({ error: 'Valid email and 32-char md5 query parameters required' });
+      return;
+    }
+
+    const ua = 'info9/0.1 (+https://github.com/ARYAN007H/info9)';
+    const [gravatarRes, pgpRes, githubRes] = await Promise.allSettled([
+      fetch(`https://www.gravatar.com/avatar/${md5}?d=404`, {
+        method: 'HEAD',
+        headers: { 'User-Agent': ua },
+      }),
+      fetch(`https://keys.openpgp.org/vks/v1/by-email/${encodeURIComponent(email)}`, {
+        method: 'GET',
+        headers: { 'User-Agent': ua },
+      }),
+      fetch(
+        `https://api.github.com/search/users?q=${encodeURIComponent(`${email} in:email`)}`,
+        {
+          headers: { 'User-Agent': ua, Accept: 'application/vnd.github+json' },
+        }
+      ),
+    ]);
+
+    const hasGravatar =
+      gravatarRes.status === 'fulfilled' && gravatarRes.value.status === 200;
+    const hasOpenPgpKey =
+      pgpRes.status === 'fulfilled' && pgpRes.value.status === 200;
+
+    let githubLogins: string[] = [];
+    if (githubRes.status === 'fulfilled' && githubRes.value.ok) {
+      try {
+        const ghJson = (await githubRes.value.json()) as {
+          items?: Array<{ login?: string }>;
+        };
+        if (Array.isArray(ghJson?.items)) {
+          githubLogins = ghJson.items
+            .map((i) => String(i.login || ''))
+            .filter(Boolean)
+            .slice(0, 5);
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    res.json({
+      email,
+      md5,
+      hasGravatar,
+      gravatarUrl: hasGravatar
+        ? `https://www.gravatar.com/avatar/${md5}?s=240&d=404`
+        : null,
+      hasOpenPgpKey,
+      openPgpUrl: hasOpenPgpKey
+        ? `https://keys.openpgp.org/vks/v1/by-email/${encodeURIComponent(email)}`
+        : null,
+      githubLogins,
+      fetchedAtUtc: new Date().toISOString(),
+    });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

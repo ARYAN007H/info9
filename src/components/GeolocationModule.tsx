@@ -63,7 +63,15 @@ import {
   streetViewLink,
   type VisionGeolocationResult,
 } from '../utils/visionGeolocate';
-import type { VisionGeolocationCandidate } from '../types/osint';
+import {
+  buildCameraFovCone,
+  buildStreetLevelVerificationLinks,
+  computePhotoFeatureBearing,
+} from '../utils/cameraBearing';
+import type {
+  CameraFeaturePin,
+  VisionGeolocationCandidate,
+} from '../types/osint';
 
 interface GeolocationModuleProps {
   activeCase: InvestigationCase;
@@ -77,11 +85,15 @@ interface GeolocationModuleProps {
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    snapshotDataUrl?: string;
   }) => void;
+  initialClue?: string;
 }
 
 type TileLayerMode = 'satellite' | 'osm' | 'topo';
-type AssistantTab = 'landmarks' | 'sun_shadow';
+type AssistantTab = 'landmarks' | 'sun_shadow' | 'camera_fov';
+
+const PIN_PALETTE = ['#38bdf8', '#a855f7', '#ec4899', '#22c55e', '#eab308'];
 
 const TILE_URLS: Record<
   TileLayerMode,
@@ -153,11 +165,12 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   activeCase,
   onUpdateGeoState,
   onAppendLedger,
+  initialClue,
 }) => {
   const { geoState } = activeCase;
   const [tileMode, setTileMode] = useState<TileLayerMode>('satellite');
   const [activeTab, setActiveTab] = useState<AssistantTab>('landmarks');
-  const [clueInput, setClueInput] = useState('');
+  const [clueInput, setClueInput] = useState(initialClue || '');
   const [isLocating, setIsLocating] = useState(false);
   const [isQueryingOverpass, setIsQueryingOverpass] = useState(false);
   const [isQueryingWeather, setIsQueryingWeather] = useState(false);
@@ -166,6 +179,13 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
   const [resolvedClue, setResolvedClue] = useState<ResolvedClueCard | null>(
     null
   );
+
+  // Camera FOV & Bearing Verification state (Improvement #8)
+  const [cameraCenterAzimuthDeg, setCameraCenterAzimuthDeg] =
+    useState<number>(90);
+  const [horizontalFovDeg, setHorizontalFovDeg] = useState<number>(60);
+  const [featurePins, setFeaturePins] = useState<CameraFeaturePin[]>([]);
+  const [newPinLabel, setNewPinLabel] = useState<string>('');
 
   // Map overlay layers — all zero-key: local heatmap over scanned landmarks,
   // live adsb.lol aircraft, Commons geosearch photos, OpenRailwayMap /
@@ -608,6 +628,52 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
         .addTo(group);
     }
 
+    if (activeTab === 'camera_fov' || featurePins.length > 0) {
+      const cone = buildCameraFovCone(
+        geoState.lat,
+        geoState.lon,
+        cameraCenterAzimuthDeg,
+        horizontalFovDeg,
+        featurePins,
+        1.4
+      );
+      L.polygon(
+        [
+          [geoState.lat, geoState.lon],
+          cone.leftEdgeCoord,
+          cone.centerRayCoord,
+          cone.rightEdgeCoord,
+        ],
+        {
+          color: '#ff6b2c',
+          weight: 1.5,
+          fillColor: '#ff6b2c',
+          fillOpacity: 0.14,
+        }
+      )
+        .bindTooltip(
+          `Camera Field of View (${horizontalFovDeg}° FOV @ ${cameraCenterAzimuthDeg}°)`
+        )
+        .addTo(group);
+
+      L.polyline([[geoState.lat, geoState.lon], cone.centerRayCoord], {
+        color: '#ff6b2c',
+        weight: 2,
+        dashArray: '4, 4',
+      })
+        .bindTooltip(`Camera center heading (${cameraCenterAzimuthDeg}°)`)
+        .addTo(group);
+
+      for (const ray of cone.featureRays) {
+        L.polyline([[geoState.lat, geoState.lon], ray.endCoord], {
+          color: ray.color,
+          weight: 2.5,
+        })
+          .bindTooltip(`${ray.label} (${ray.bearingDeg}°)`)
+          .addTo(group);
+      }
+    }
+
     for (const lm of geoState.landmarks) {
       L.circleMarker([lm.lat, lm.lon], {
         radius: 6,
@@ -629,6 +695,9 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
     geoState.landmarks,
     activeSunPosition.azimuthDeg,
     activeTab,
+    cameraCenterAzimuthDeg,
+    horizontalFovDeg,
+    featurePins,
   ]);
 
   // Universal Clue Resolver (handles Phone numbers, IP addresses, Coordinates, and Places)
@@ -768,6 +837,14 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
       setIsLocating(false);
     }
   };
+
+  useEffect(() => {
+    if (initialClue && initialClue.trim()) {
+      setClueInput(initialClue.trim());
+      void resolveAnyClue(initialClue.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialClue]);
 
   const handleClueFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1666,7 +1743,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
           </div>
         </div>
 
-        {/* Right 5 Cols: Clean 2-Tab Verification Assistant */}
+        {/* Right 5 Cols: Clean 3-Tab Verification Assistant */}
         <div className="lg:col-span-5 border border-line bg-panel rounded-md p-5 flex flex-col justify-between lg:h-[clamp(300px,calc(100dvh-412px),760px)] lg:overflow-y-auto">
           <div className="space-y-4">
             {/* Segmented Tab Switcher */}
@@ -1674,24 +1751,35 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('landmarks')}
-                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'landmarks'
                     ? 'bg-well text-ink'
                     : 'text-ink-2 hover:text-ink'
                 }`}
               >
-                Nearby landmarks
+                Landmarks
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('sun_shadow')}
-                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === 'sun_shadow'
                     ? 'bg-well text-ink'
                     : 'text-ink-2 hover:text-ink'
                 }`}
               >
-                Sun &amp; shadow time
+                Sun &amp; shadow
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('camera_fov')}
+                className={`flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                  activeTab === 'camera_fov'
+                    ? 'bg-well text-ink'
+                    : 'text-ink-2 hover:text-ink'
+                }`}
+              >
+                Camera FOV
               </button>
             </div>
 
@@ -1820,7 +1908,7 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                   )}
                 </div>
               </div>
-            ) : (
+            ) : activeTab === 'sun_shadow' ? (
               /* Tab 2: Sun, Shadow & Weather Calculator */
               <div className="space-y-4">
                 <div>
@@ -2005,6 +2093,233 @@ export const GeolocationModule: React.FC<GeolocationModuleProps> = ({
                       {isQueryingWeather ? 'Checking...' : 'Check Weather'}
                     </span>
                   </button>
+                </div>
+              </div>
+            ) : (
+              /* Tab 3: Camera FOV & Feature Bearing Verification (Improvement #8) */
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-bold text-ink">
+                    Camera field-of-view &amp; landmark bearings
+                  </h2>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Project a rectilinear pinhole camera FOV cone onto the map and click
+                    landmarks in your photo (or horizon strip) to draw exact bearing rays.
+                  </p>
+                </div>
+
+                <div className="p-3 border border-line bg-well rounded space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] font-medium text-ink-2 mb-1">
+                      <label htmlFor="fov-heading">Camera center heading</label>
+                      <span className="font-mono text-accent">{cameraCenterAzimuthDeg}°</span>
+                    </div>
+                    <input
+                      id="fov-heading"
+                      type="range"
+                      min={0}
+                      max={359}
+                      step={1}
+                      value={cameraCenterAzimuthDeg}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setCameraCenterAzimuthDeg(val);
+                      }}
+                      className="w-full accent-accent"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] font-medium text-ink-2 mb-1">
+                      <label htmlFor="fov-angle">Horizontal field of view (FOV)</label>
+                      <span className="font-mono text-ink">{horizontalFovDeg}°</span>
+                    </div>
+                    <input
+                      id="fov-angle"
+                      type="range"
+                      min={20}
+                      max={120}
+                      step={1}
+                      value={horizontalFovDeg}
+                      onChange={(e) => setHorizontalFovDeg(parseInt(e.target.value, 10))}
+                      className="w-full accent-accent"
+                    />
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {[
+                        { label: '28° Telephoto', fov: 28 },
+                        { label: '60° Smartphone', fov: 60 },
+                        { label: '95° Ultra-wide', fov: 95 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.fov}
+                          type="button"
+                          onClick={() => setHorizontalFovDeg(preset.fov)}
+                          className={`px-2 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+                            horizontalFovDeg === preset.fov
+                              ? 'border-accent bg-accent/15 text-ink'
+                              : 'border-line bg-panel text-ink-3 hover:text-ink'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interactive Photo or Horizon Strip Bearing Picker */}
+                <div className="p-3 border border-line bg-well rounded space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-ink">
+                      Click image / horizon to pin landmark bearing ray
+                    </span>
+                    {featurePins.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFeaturePins([])}
+                        className="text-[11px] text-ink-3 hover:text-danger"
+                      >
+                        Clear rays ({featurePins.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={newPinLabel}
+                    onChange={(e) => setNewPinLabel(e.target.value)}
+                    placeholder={`Next pin label (default: Landmark #${featurePins.length + 1})`}
+                    className="w-full px-2.5 py-1 text-xs font-mono border border-line bg-panel rounded text-ink"
+                  />
+
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Click horizontally to place a landmark bearing ray"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const xRatio = Math.max(
+                        0,
+                        Math.min(1, (e.clientX - rect.left) / (rect.width || 1))
+                      );
+                      const yRatio = Math.max(
+                        0,
+                        Math.min(1, (e.clientY - rect.top) / (rect.height || 1))
+                      );
+                      const computedBearingDeg = computePhotoFeatureBearing(
+                        cameraCenterAzimuthDeg,
+                        horizontalFovDeg,
+                        xRatio
+                      );
+                      const idx = featurePins.length;
+                      const pin: CameraFeaturePin = {
+                        id: `pin-${Date.now()}-${idx}`,
+                        label: newPinLabel.trim() || `Landmark #${idx + 1}`,
+                        xRatio: Number(xRatio.toFixed(3)),
+                        yRatio: Number(yRatio.toFixed(3)),
+                        computedBearingDeg,
+                        color: PIN_PALETTE[idx % PIN_PALETTE.length],
+                      };
+                      setFeaturePins((prev) => [...prev, pin]);
+                      setNewPinLabel('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        const computedBearingDeg = computePhotoFeatureBearing(
+                          cameraCenterAzimuthDeg,
+                          horizontalFovDeg,
+                          0.5
+                        );
+                        const idx = featurePins.length;
+                        setFeaturePins((prev) => [
+                          ...prev,
+                          {
+                            id: `pin-${Date.now()}-${idx}`,
+                            label: newPinLabel.trim() || `Center Landmark #${idx + 1}`,
+                            xRatio: 0.5,
+                            yRatio: 0.5,
+                            computedBearingDeg,
+                            color: PIN_PALETTE[idx % PIN_PALETTE.length],
+                          },
+                        ]);
+                      }
+                    }}
+                    className="relative h-32 w-full overflow-hidden rounded border border-line-strong bg-[#0e131a] cursor-crosshair select-none"
+                  >
+                    {resolvedClue?.photoPreviewUrl ? (
+                      <img
+                        src={resolvedClue.photoPreviewUrl}
+                        alt="Uploaded frame for bearing calibration"
+                        className="h-full w-full object-cover opacity-85"
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+                        <div className="font-mono text-[11px] text-ink-2">
+                          Rectilinear Horizon Strip (0.0 left → 0.5 center → 1.0 right)
+                        </div>
+                        <div className="mt-1 text-[10px] text-ink-3">
+                          Click anywhere along this frame (or upload a photo above) to project a bearing ray onto the satellite map
+                        </div>
+                      </div>
+                    )}
+                    {/* Vertical centerline */}
+                    <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-accent/50" />
+                    {/* Render existing pins */}
+                    {featurePins.map((pin) => {
+                      const liveBearing = computePhotoFeatureBearing(
+                        cameraCenterAzimuthDeg,
+                        horizontalFovDeg,
+                        pin.xRatio
+                      );
+                      return (
+                        <div
+                          key={pin.id}
+                          style={{
+                            left: `${pin.xRatio * 100}%`,
+                            top: `${pin.yRatio * 100}%`,
+                          }}
+                          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                        >
+                          <div
+                            style={{ backgroundColor: pin.color }}
+                            className="h-3 w-3 rounded-full border border-black shadow"
+                          />
+                          <span
+                            style={{ backgroundColor: pin.color }}
+                            className="mt-0.5 block whitespace-nowrap rounded px-1 py-0.2 font-mono text-[9px] font-bold text-black"
+                          >
+                            {pin.label} ({liveBearing}°)
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Street-Level & Overhead Corroboration Links */}
+                <div className="p-3 border border-line bg-well rounded space-y-2">
+                  <div className="text-xs font-semibold text-ink">
+                    Street-level &amp; overhead verification at pin ({cameraCenterAzimuthDeg}°)
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                    {buildStreetLevelVerificationLinks(
+                      geoState.lat,
+                      geoState.lon,
+                      cameraCenterAzimuthDeg
+                    ).map((link) => (
+                      <a
+                        key={link.id}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 rounded border border-line bg-panel hover:border-accent font-mono text-[11px] text-ink-2 hover:text-ink flex items-center justify-between"
+                      >
+                        <span className="truncate">{link.label}</span>
+                        <span>↗</span>
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

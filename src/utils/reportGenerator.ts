@@ -277,7 +277,15 @@ export function buildPrintableReportHtml(
             (e) =>
               `<tr><td>${e.index}</td><td class="mono">${esc(e.timestampUtc.slice(0, 19))}</td><td>${esc(
                 e.module
-              )}</td><td>${esc(e.targetLabel)}</td><td>${esc(e.findingSummary)}</td><td class="mono">${esc(
+              )}</td><td>${esc(e.targetLabel)}</td><td>${esc(e.findingSummary)}${
+                e.snapshotDataUrl && /^data:image\/(png|jpeg|webp);base64,/i.test(e.snapshotDataUrl)
+                  ? `<div style="margin-top:6px;"><img src="${esc(
+                      e.snapshotDataUrl
+                    )}" alt="Evidence snapshot #${e.index}" style="max-width:220px;max-height:120px;border:1px solid #d8dee9;border-radius:4px;display:block;" /><span class="mono" style="font-size:9.5px;color:#64748b;">Snapshot SHA-256: ${esc(
+                      (e.snapshotHash || '').slice(0, 20)
+                    )}…</span></div>`
+                  : ''
+              }</td><td class="mono">${esc(
                 e.sha256Hash
               )}</td></tr>`
           )

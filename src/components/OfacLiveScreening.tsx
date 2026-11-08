@@ -1,18 +1,23 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Search, ShieldCheck } from 'lucide-react';
-import { Panel, Button, NoticeBanner, TextField } from './ui';
+import { BookmarkPlus, Download, ListChecks, Search, ShieldCheck } from 'lucide-react';
+import {
+  Button,
+  NoticeBanner,
+  Panel,
+  SegmentedTabs,
+  TextField,
+  Well,
+} from './ui';
 import ProvenanceBadge from './ProvenanceBadge';
 import { MODULE_CATALOG } from './moduleCatalog';
 import { fetchOfacSdnList } from '../services/osintApis';
 import { scoreSanctionsCandidate } from '../utils/osintForensics';
+import {
+  buildTrigramCandidateIndex,
+  parseBatchScreeningInput,
+  queryTrigramIndex,
+} from '../utils/sanctionsData';
 import type { SanctionsMatchWeights } from '../types/osint';
-
-/**
- * LIVE OFAC SDN screening — the real U.S. Treasury Specially Designated
- * Nationals list (free public data), downloaded and parsed by the local
- * server, scored locally with the same disclosed matcher as the demo set.
- * Name-and-DOB matching against ~20k current records, zero API keys.
- */
 
 const DEFAULT_WEIGHTS: SanctionsMatchWeights = {
   namePhoneticWeight: 40,
@@ -22,6 +27,7 @@ const DEFAULT_WEIGHTS: SanctionsMatchWeights = {
 };
 
 interface ScoredHit {
+  queryTarget?: string;
   listedName: string;
   identifierCode: string;
   program: string;
@@ -31,9 +37,17 @@ interface ScoredHit {
   disposition: string;
 }
 
-export function OfacLiveScreening() {
+interface OfacLiveScreeningProps {
+  onRecordHit?: (hit: ScoredHit) => void;
+}
+
+export function OfacLiveScreening({ onRecordHit }: OfacLiveScreeningProps) {
+  const [mode, setMode] = useState<'single' | 'batch'>('single');
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
+  const [batchText, setBatchText] = useState(
+    'Viktor Alekseyevich Morozov, 1968-04-14, Russia\nVega Maritime Holdings, , Marshall Islands'
+  );
   const [isScreening, setIsScreening] = useState(false);
   const [progressNote, setProgressNote] = useState<string | null>(null);
   const [hits, setHits] = useState<ScoredHit[] | null>(null);
@@ -44,40 +58,71 @@ export function OfacLiveScreening() {
   const [error, setError] = useState<string | null>(null);
 
   const handleScreen = async () => {
-    const cleaned = name.trim();
-    if (!cleaned || isScreening) return;
+    if (isScreening) return;
+    if (mode === 'single' && !name.trim()) return;
+    const batchRows =
+      mode === 'batch'
+        ? parseBatchScreeningInput(batchText)
+        : [
+            {
+              targetName: name.trim(),
+              targetDob: dob.trim(),
+              targetJurisdiction: '',
+            },
+          ];
+    if (batchRows.length === 0) return;
+
     setIsScreening(true);
     setError(null);
-    setProgressNote('Downloading live OFAC SDN list (~6 MB, first run only)...');
+    setProgressNote('Downloading live OFAC SDN list (~6 MB, cached after first run)...');
     try {
       const list = await fetchOfacSdnList();
       setListInfo({ count: list.count, fetchedAt: list.fetchedAt });
       setProgressNote(
-        `Scoring "${cleaned}" against ${list.count.toLocaleString()} live records...`
+        `Indexing ${list.count.toLocaleString()} live records with 3-gram trigram index & scoring ${batchRows.length} target(s)...`
       );
-      // Yield to the browser so the progress note paints before the heavy loop.
-      await new Promise((r) => setTimeout(r, 30));
-      const scored: ScoredHit[] = list.candidates
-        .map((candidate) => {
-          const res = scoreSanctionsCandidate(
-            { targetName: cleaned, targetDob: dob.trim(), targetJurisdiction: '' },
-            candidate,
-            DEFAULT_WEIGHTS
-          );
-          return {
-            listedName: candidate.listedName,
-            identifierCode: candidate.identifierCode,
-            program: candidate.program,
-            entityType: candidate.entityType,
-            dobOrIncorporation: candidate.dobOrIncorporation,
-            compositeScore: res.compositeScore,
-            disposition: res.disposition,
-          };
-        })
-        .filter((h) => h.compositeScore >= 35)
-        .sort((a, b) => b.compositeScore - a.compositeScore)
-        .slice(0, 25);
-      setHits(scored);
+      await new Promise((r) => setTimeout(r, 20));
+
+      const trigramIdx = buildTrigramCandidateIndex(list.candidates);
+      const aggregated: ScoredHit[] = [];
+
+      for (const row of batchRows) {
+        const shortlist =
+          batchRows.length > 1
+            ? queryTrigramIndex(trigramIdx, row.targetName, 300)
+            : list.candidates;
+
+        const rowHits = shortlist
+          .map((candidate) => {
+            const res = scoreSanctionsCandidate(
+              {
+                targetName: row.targetName,
+                targetDob: row.targetDob,
+                targetJurisdiction: row.targetJurisdiction,
+              },
+              candidate,
+              DEFAULT_WEIGHTS
+            );
+            return {
+              queryTarget: row.targetName,
+              listedName: candidate.listedName,
+              identifierCode: candidate.identifierCode,
+              program: candidate.program,
+              entityType: candidate.entityType,
+              dobOrIncorporation: candidate.dobOrIncorporation,
+              compositeScore: res.compositeScore,
+              disposition: res.disposition,
+            };
+          })
+          .filter((h) => h.compositeScore >= 38)
+          .sort((a, b) => b.compositeScore - a.compositeScore)
+          .slice(0, mode === 'batch' ? 3 : 25);
+
+        aggregated.push(...rowHits);
+      }
+
+      aggregated.sort((a, b) => b.compositeScore - a.compositeScore);
+      setHits(aggregated.slice(0, 40));
       setProgressNote(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Live screening failed');
@@ -92,9 +137,9 @@ export function OfacLiveScreening() {
       listInfo
         ? {
             status: 'LIVE' as const,
-            source: `OFAC SDN CSV · ${listInfo.count.toLocaleString()} records`,
+            source: `OFAC SDN CSV · ${listInfo.count.toLocaleString()} records (Trigram-indexed)`,
             fetchedAtUtc: listInfo.fetchedAt,
-            note: 'Screened locally; name+DOB heuristic. Aliases file not parsed — check near-misses manually.',
+            note: 'Screened locally; name+DOB heuristic.',
           }
         : null,
     [listInfo]
@@ -103,37 +148,86 @@ export function OfacLiveScreening() {
   return (
     <Panel
       tag={MODULE_CATALOG.sanctions.num}
-      title="Watchlist — live OFAC SDN screening"
-      description="Score a name against the real U.S. Treasury SDN list — free public data, screened locally, zero keys."
+      title="Watchlist — live OFAC SDN & batch CSV screening"
+      description="Score a single name or a batch CSV list of up to 100 entities/directors against the real U.S. Treasury SDN list — zero keys."
+      actions={
+        <SegmentedTabs
+          size="sm"
+          ariaLabel="Screening input mode"
+          tabs={[
+            { id: 'single', label: 'Single target' },
+            { id: 'batch', label: 'Batch CSV / multi-line' },
+          ]}
+          active={mode}
+          onChange={(id) => {
+            setMode(id);
+            setHits(null);
+          }}
+        />
+      }
     >
       <div className="space-y-3">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_160px_auto]">
-          <TextField
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleScreen();
-            }}
-            placeholder="Full name as it might be listed (any script)"
-            className="font-mono"
-          />
-          <TextField
-            type="text"
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-            placeholder="DOB (optional)"
-            className="font-mono"
-          />
-          <Button
-            variant="primary"
-            icon={<Search className="h-4 w-4" />}
-            onClick={handleScreen}
-            disabled={!name.trim() || isScreening}
-          >
-            {isScreening ? 'Screening…' : 'Screen live list'}
-          </Button>
-        </div>
+        {mode === 'single' ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_160px_auto]">
+            <TextField
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleScreen();
+              }}
+              placeholder="Full name as it might be listed (any script)"
+              className="font-mono"
+            />
+            <TextField
+              type="text"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              placeholder="DOB (optional)"
+              className="font-mono"
+            />
+            <Button
+              variant="primary"
+              icon={<Search className="h-4 w-4" />}
+              onClick={handleScreen}
+              disabled={!name.trim() || isScreening}
+            >
+              {isScreening ? 'Screening…' : 'Screen live list'}
+            </Button>
+          </div>
+        ) : (
+          <Well className="space-y-2.5 p-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-ink">
+                Paste one entity or person per line (`Name, DOB, Country` or just `Name`)
+              </span>
+              <span className="font-mono text-[11px] text-ink-3">
+                {parseBatchScreeningInput(batchText).length} row(s) ready
+              </span>
+            </div>
+            <textarea
+              rows={4}
+              value={batchText}
+              onChange={(e) => setBatchText(e.target.value)}
+              placeholder="Name, YYYY-MM-DD, Country"
+              className="w-full rounded border border-line bg-panel p-2.5 font-mono text-xs text-ink focus:border-accent focus:outline-none"
+            />
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                icon={<ListChecks className="h-4 w-4" />}
+                onClick={handleScreen}
+                disabled={
+                  parseBatchScreeningInput(batchText).length === 0 || isScreening
+                }
+              >
+                {isScreening
+                  ? 'Batch screening…'
+                  : `Screen ${parseBatchScreeningInput(batchText).length} target(s)`}
+              </Button>
+            </div>
+          </Well>
+        )}
 
         {error && (
           <NoticeBanner tone="danger" title="Live screening unavailable">
@@ -150,36 +244,59 @@ export function OfacLiveScreening() {
             <ProvenanceBadge meta={listProvenance} />
             {hits && (
               <span className="font-mono text-[11px] text-ink-3">
-                {hits.length} candidate hit(s) above threshold (35)
+                {hits.length} candidate hit(s) above threshold
               </span>
             )}
           </div>
         )}
 
         {hits && hits.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-line">
+          <div className="overflow-x-auto rounded border border-line">
             <table className="w-full text-left text-xs">
               <thead className="bg-well font-mono text-[10px] uppercase tracking-wide text-ink-3">
                 <tr>
                   <th className="px-3 py-2">Score</th>
+                  {mode === 'batch' && <th className="px-3 py-2">Query</th>}
                   <th className="px-3 py-2">Listed name</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Program</th>
                   <th className="px-3 py-2">DOB/Incorp.</th>
                   <th className="px-3 py-2">Entry</th>
+                  {onRecordHit && <th className="px-3 py-2" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line font-mono tabular-nums">
-                {hits.map((hit) => (
-                  <tr key={hit.identifierCode} className="text-ink-2">
+                {hits.map((hit, idx) => (
+                  <tr
+                    key={`${hit.identifierCode}-${idx}`}
+                    className="text-ink-2 hover:bg-well/50"
+                  >
                     <td className="px-3 py-2 font-bold text-ink">
-                      {hit.compositeScore.toFixed(0)}
+                      {hit.compositeScore.toFixed(0)}%
                     </td>
+                    {mode === 'batch' && (
+                      <td className="px-3 py-2 text-accent">
+                        {hit.queryTarget}
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-ink">{hit.listedName}</td>
                     <td className="px-3 py-2">{hit.entityType}</td>
                     <td className="px-3 py-2">{hit.program}</td>
-                    <td className="px-3 py-2">{hit.dobOrIncorporation || '—'}</td>
+                    <td className="px-3 py-2">
+                      {hit.dobOrIncorporation || '—'}
+                    </td>
                     <td className="px-3 py-2">{hit.identifierCode}</td>
+                    {onRecordHit && (
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onRecordHit(hit)}
+                        >
+                          <BookmarkPlus className="h-3 w-3" /> Record
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

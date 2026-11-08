@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Building2,
-  Compass,
-  Globe,
-  ScanEye,
+  ArrowUpRight,
   Search,
-  ShieldAlert,
+  Sparkles,
   X,
 } from 'lucide-react';
 import type { InvestigationCase, ModuleId } from '../types/osint';
+import { MODULE_CATALOG, MODULE_ORDER } from './moduleCatalog';
+import {
+  classifyUniversalIntake,
+  type SmartRouteAction,
+} from '../utils/smartIntake';
 
 interface CommandPaletteModalProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface CommandPaletteModalProps {
   onSelectModule: (moduleId: ModuleId) => void;
   onQuickCoordinateJump: (lat: number, lon: number, label: string) => void;
   onQuickSanctionsScreen: (name: string) => void;
+  onRouteSmartClue?: (action: SmartRouteAction) => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -26,6 +29,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onSelectModule,
   onQuickCoordinateJump,
   onQuickSanctionsScreen,
+  onRouteSmartClue,
 }) => {
   const [query, setQuery] = useState('');
 
@@ -38,6 +42,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   if (!isOpen) return null;
 
   const q = query.trim().toLowerCase();
+  const classified = classifyUniversalIntake(query);
 
   const matchingEntities = activeCase.entities.filter(
     (e) =>
@@ -53,12 +58,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       (d.asnOrg ?? '').toLowerCase().includes(q)
   );
 
-  const coordMatch = query
-    .trim()
-    .match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
-
-  const sectionLabel =
-    'mb-2 text-[11px] font-semibold text-ink-3';
+  const sectionLabel = 'mb-2 text-[11px] font-semibold text-ink-3';
   const kbd =
     'shrink-0 rounded border border-line bg-app px-1.5 py-0.5 font-mono text-[10px] text-ink-3';
 
@@ -66,7 +66,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Quick Jump and Search"
+      aria-label="Quick Jump and Smart Intake Search"
       className="fixed inset-0 z-50 flex items-start justify-center bg-scrim px-4 pt-20 backdrop-blur-[2px]"
       onClick={onClose}
     >
@@ -80,11 +80,39 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             type="text"
             autoFocus
             aria-label="Quick jump search input"
-            placeholder="Jump to a tool, enter coordinates (e.g. 51.5074, -0.1278), or screen a name..."
+            placeholder="Paste any clue (domain, IP, email, @handle, phone, coords, name) or jump to a module..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-transparent text-sm text-ink focus:outline-none placeholder:text-ink-3"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && classified?.recommendedActions[0]) {
+                const top = classified.recommendedActions[0];
+                if (onRouteSmartClue) {
+                  onRouteSmartClue(top);
+                } else if (
+                  classified.kind === 'coordinates' &&
+                  top.targetValue.includes(',')
+                ) {
+                  const [lat, lon] = top.targetValue.split(',').map(Number);
+                  onQuickCoordinateJump(
+                    lat,
+                    lon,
+                    `Pinned Coordinates (${lat}, ${lon})`
+                  );
+                } else if (top.moduleId === 'sanctions') {
+                  onQuickSanctionsScreen(top.targetValue);
+                } else {
+                  onSelectModule(top.moduleId);
+                }
+                onClose();
+              }
+            }}
+            className="w-full bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none"
           />
+          {classified && (
+            <span className="shrink-0 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent">
+              {classified.badgeLabel}
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -95,99 +123,74 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
           </button>
         </div>
 
-        <div className="max-h-[400px] space-y-5 overflow-y-auto p-4 text-xs">
-          {coordMatch && (
+        <div className="max-h-[420px] space-y-5 overflow-y-auto p-4 text-xs">
+          {classified && (
             <div>
-              <div className={sectionLabel}>Jump to map coordinates</div>
-              <button
-                type="button"
-                onClick={() => {
-                  const lat = parseFloat(coordMatch[1]);
-                  const lon = parseFloat(coordMatch[2]);
-                  onQuickCoordinateJump(
-                    lat,
-                    lon,
-                    `Pinned Coordinates (${lat}, ${lon})`
-                  );
-                  onClose();
-                }}
-                className="flex w-full items-center justify-between rounded border border-accent/35 bg-accent/10 p-2.5 text-left font-mono text-accent transition-colors hover:bg-accent/15"
-              >
-                <span>
-                  Pin map at {coordMatch[1]}°, {coordMatch[2]}°
-                </span>
-                <span className={kbd}>↵</span>
-              </button>
-            </div>
-          )}
-
-          {q.length >= 3 && !coordMatch && (
-            <div>
-              <div className={sectionLabel}>Quick watchlist screening</div>
-              <button
-                type="button"
-                onClick={() => {
-                  onQuickSanctionsScreen(query.trim());
-                  onClose();
-                }}
-                className="flex w-full items-center justify-between rounded border border-gap/35 bg-gap/10 p-2.5 text-left transition-colors hover:bg-gap/15"
-              >
-                <span className="flex items-center gap-2 font-medium text-gap">
-                  <ShieldAlert className="h-4 w-4 shrink-0" />
-                  <span>
-                    Screen &ldquo;{query.trim()}&rdquo; in watchlist tool
-                  </span>
-                </span>
-                <span className={kbd}>Go →</span>
-              </button>
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-accent">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Smart Intake Actions — {classified.summary}</span>
+              </div>
+              <div className="space-y-1.5">
+                {classified.recommendedActions.map((act, idx) => (
+                  <button
+                    key={act.id}
+                    type="button"
+                    onClick={() => {
+                      if (onRouteSmartClue) {
+                        onRouteSmartClue(act);
+                      } else if (
+                        classified.kind === 'coordinates' &&
+                        act.targetValue.includes(',')
+                      ) {
+                        const [lat, lon] = act.targetValue.split(',').map(Number);
+                        onQuickCoordinateJump(
+                          lat,
+                          lon,
+                          `Pinned Coordinates (${lat}, ${lon})`
+                        );
+                      } else if (act.moduleId === 'sanctions') {
+                        onQuickSanctionsScreen(act.targetValue);
+                      } else {
+                        onSelectModule(act.moduleId);
+                      }
+                      onClose();
+                    }}
+                    className="flex w-full items-center justify-between rounded border border-line bg-well p-2.5 text-left text-ink transition-colors hover:border-accent/60"
+                  >
+                    <span className="font-medium">{act.label}</span>
+                    <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase text-accent">
+                      {idx === 0 ? '↵ ' : ''}
+                      {act.moduleId}
+                      <ArrowUpRight className="h-3 w-3" />
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           <div>
-            <div className={sectionLabel}>Investigation tools</div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {(
-                [
-                  {
-                    id: 'geolocation',
-                    label: 'Geolocate (photo, phone, IP, place)',
-                    icon: Compass,
-                  },
-                  {
-                    id: 'dossier',
-                    label: 'People & companies lookup',
-                    icon: Building2,
-                  },
-                  {
-                    id: 'infra',
-                    label: 'Website & IP scanner',
-                    icon: Globe,
-                  },
-                  {
-                    id: 'forensics',
-                    label: 'Photo authenticity & EXIF',
-                    icon: ScanEye,
-                  },
-                  {
-                    id: 'sanctions',
-                    label: 'Watchlist & saved notes',
-                    icon: ShieldAlert,
-                  },
-                ] as const
-              ).map((mod) => {
-                const Icon = mod.icon;
+            <div className={sectionLabel}>All 9 Investigation Instruments</div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {MODULE_ORDER.map((id) => {
+                const mod = MODULE_CATALOG[id];
                 return (
                   <button
-                    key={mod.id}
+                    key={id}
                     type="button"
                     onClick={() => {
-                      onSelectModule(mod.id);
+                      onSelectModule(id);
                       onClose();
                     }}
-                    className="flex items-center gap-2.5 rounded border border-line bg-well p-2.5 text-left text-ink transition-colors hover:border-accent/60"
+                    className="flex items-center justify-between gap-2 rounded border border-line bg-well p-2 text-left text-ink transition-colors hover:border-accent/60"
                   >
-                    <Icon className="h-4 w-4 shrink-0 text-ink-3" />
-                    <span className="font-medium">{mod.label}</span>
+                    <span className="truncate font-medium">
+                      <span className="mr-1.5 font-mono text-[10px] text-accent">
+                        {mod.num}
+                      </span>
+                      {mod.name}
+                    </span>
+                    <span className={kbd}>{mod.shortName}</span>
                   </button>
                 );
               })}

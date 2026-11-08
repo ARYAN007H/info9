@@ -739,6 +739,7 @@ export function createLinkedLedgerEntry(
     findingSummary: string;
     sourceUrl: string;
     timestampUtc?: string;
+    snapshotDataUrl?: string;
   }
 ): EvidenceLedgerEntry {
   const index = existingLedger.length + 1;
@@ -758,6 +759,10 @@ export function createLinkedLedgerEntry(
     previousHash,
   });
 
+  const snapshotHash = input.snapshotDataUrl
+    ? sha256HexSync(input.snapshotDataUrl)
+    : undefined;
+
   return {
     index,
     id: `ev-${index}-${sha256Hash.slice(0, 8)}`,
@@ -768,6 +773,9 @@ export function createLinkedLedgerEntry(
     sourceUrl: input.sourceUrl,
     previousHash,
     sha256Hash,
+    ...(input.snapshotDataUrl
+      ? { snapshotDataUrl: input.snapshotDataUrl, snapshotHash }
+      : {}),
   };
 }
 
