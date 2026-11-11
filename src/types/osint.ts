@@ -329,6 +329,34 @@ export interface CameraFeaturePin {
   color: string;
 }
 
+/**
+ * A cross-module link the analyst accepted from the auto-link suggestions
+ * (src/utils/autoLinks.ts). Persisted so accepted edges survive reloads and
+ * case-bundle round-trips; ids are deterministic (FNV-1a of the rule inputs).
+ */
+export interface AcceptedAutoLink {
+  id: string;
+  kind:
+    | 'shared_host'
+    | 'shared_asn'
+    | 'ledger_domain'
+    | 'ledger_location'
+    | 'entity_brand_domain'
+    | 'ledger_shared_signal'
+    | 'similar_entity_names';
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeLabel: string;
+  rationale: string;
+  confidence: number;
+  acceptedAtUtc: string;
+}
+
+export interface AutoLinkDecisions {
+  accepted: AcceptedAutoLink[];
+  dismissedIds: string[];
+}
+
 export interface EvidenceLedgerEntry {
   index: number;
   id: string;
@@ -376,4 +404,9 @@ export interface InvestigationCase {
     candidates: SanctionsCandidate[];
   };
   evidenceLedger: EvidenceLedgerEntry[];
+  /**
+   * Analyst decisions on auto-link suggestions (accept/dismiss). Optional so
+   * pre-existing cases and case bundles load unchanged.
+   */
+  autoLinkDecisions?: AutoLinkDecisions;
 }

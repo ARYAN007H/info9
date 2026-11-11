@@ -1,11 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { Network, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, Network, Sparkles, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { InvestigationCase, ModuleId } from '../types/osint';
 import {
   buildCaseInvestigationGraph,
   type CaseGraphNode,
   type GraphNodeKind,
 } from '../utils/caseGraph';
+import {
+  pendingAutoLinks,
+  suggestAutoLinks,
+  type AutoLinkSuggestion,
+} from '../utils/autoLinks';
 import { classifyUniversalIntake, type SmartRouteAction } from '../utils/smartIntake';
 import { Button, DataLabel, DataValue, EmptyState, Panel, Well } from './ui';
 
@@ -13,6 +18,8 @@ interface CaseGraphViewProps {
   activeCase: InvestigationCase;
   onRouteClue?: (action: SmartRouteAction) => void;
   onSelectModule?: (moduleId: ModuleId) => void;
+  onAcceptAutoLink?: (suggestion: AutoLinkSuggestion) => void;
+  onDismissAutoLink?: (id: string) => void;
 }
 
 const NODE_COLORS: Record<
@@ -32,6 +39,8 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
   activeCase,
   onRouteClue,
   onSelectModule,
+  onAcceptAutoLink,
+  onDismissAutoLink,
 }) => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<GraphNodeKind | 'all'>('all');
@@ -41,6 +50,16 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
     () => buildCaseInvestigationGraph(activeCase, 860, 460),
     [activeCase]
   );
+
+  const autoLinkSuggestions = useMemo(
+    () => suggestAutoLinks(activeCase, graph),
+    [activeCase, graph]
+  );
+  const pendingSuggestions = useMemo(
+    () => pendingAutoLinks(autoLinkSuggestions, activeCase.autoLinkDecisions),
+    [autoLinkSuggestions, activeCase.autoLinkDecisions]
+  );
+  const acceptedCount = activeCase.autoLinkDecisions?.accepted.length ?? 0;
 
   const visibleNodes = useMemo(() => {
     if (kindFilter === 'all') return graph.nodes;
@@ -301,6 +320,90 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
           </div>
         </Well>
       </div>
+
+      {/* Auto-link suggestions: the engine mined every recorded artifact for
+          cross-module signals; nothing enters the graph without a review. */}
+      {(pendingSuggestions.length > 0 || acceptedCount > 0) && (
+        <Well
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              Suggested cross-module links
+              {pendingSuggestions.length > 0 && ` (${pendingSuggestions.length} pending)`}
+            </span>
+          }
+          actions={
+            acceptedCount > 0 ? (
+              <span className="font-mono text-[10px] text-ink-3">
+                {acceptedCount} accepted · woven into the graph
+              </span>
+            ) : undefined
+          }
+          className="p-3"
+        >
+          {pendingSuggestions.length === 0 ? (
+            <div className="text-[11px] text-ink-3">
+              No pending suggestions — accepted links already drawn.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {pendingSuggestions.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex flex-wrap items-center gap-2 rounded border border-line bg-panel px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-mono text-xs font-semibold text-ink">
+                        {s.label}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded border px-1 py-px font-mono text-[9px] uppercase ${
+                          s.confidence >= 0.85
+                            ? 'border-live/40 bg-live/10 text-live'
+                            : s.confidence >= 0.65
+                              ? 'border-derived/40 bg-derived/10 text-derived'
+                              : 'border-gap/40 bg-gap/10 text-gap'
+                        }`}
+                      >
+                        {(s.confidence * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-4 text-ink-2">
+                      {s.rationale}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={<Check className="h-3.5 w-3.5" />}
+                      disabled={!onAcceptAutoLink}
+                      onClick={() => onAcceptAutoLink?.(s)}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<X className="h-3.5 w-3.5" />}
+                      disabled={!onDismissAutoLink}
+                      onClick={() => onDismissAutoLink?.(s.id)}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-[10px] leading-4 text-ink-3">
+            Confidence is a labeled heuristic — the rationale names the shared
+            signal exactly. Accept weaves the edge into the graph (highlighted);
+            dismissed suggestions never return for this case.
+          </p>
+        </Well>
+      )}
     </Panel>
   );
 };

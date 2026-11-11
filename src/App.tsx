@@ -27,6 +27,7 @@ import { IdentitySweepModule } from './components/IdentitySweepModule';
 import { InvestigationRunModule } from './components/InvestigationRunModule';
 import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
 import { FaceReconModule } from './components/FaceReconModule';
+import type { AutoLinkSuggestion } from './utils/autoLinks';
 import { AcousticDopplerModule } from './components/AcousticDopplerModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ReportBuilderModal } from './components/ReportBuilderModal';
@@ -264,6 +265,51 @@ export function App() {
         ...prev,
         updatedAtUtc: new Date().toISOString(),
         infraRecords: [record, ...filtered],
+      };
+    });
+  };
+
+  // Auto-link decisions: accepting weaves the edge into the case graph;
+  // dismissing suppresses the suggestion for this case. Both persist via the
+  // regular case state (localStorage + case bundles).
+  const handleAcceptAutoLink = (s: AutoLinkSuggestion) => {
+    setWorkspaceCase((prev) => {
+      const decisions = prev.autoLinkDecisions ?? { accepted: [], dismissedIds: [] };
+      if (decisions.accepted.some((a) => a.id === s.id)) return prev;
+      return {
+        ...prev,
+        updatedAtUtc: new Date().toISOString(),
+        autoLinkDecisions: {
+          accepted: [
+            ...decisions.accepted,
+            {
+              id: s.id,
+              kind: s.kind,
+              sourceNodeId: s.sourceNodeId,
+              targetNodeId: s.targetNodeId,
+              edgeLabel: s.edgeLabel,
+              rationale: s.rationale,
+              confidence: s.confidence,
+              acceptedAtUtc: new Date().toISOString(),
+            },
+          ],
+          dismissedIds: decisions.dismissedIds.filter((id) => id !== s.id),
+        },
+      };
+    });
+  };
+
+  const handleDismissAutoLink = (id: string) => {
+    setWorkspaceCase((prev) => {
+      const decisions = prev.autoLinkDecisions ?? { accepted: [], dismissedIds: [] };
+      if (decisions.dismissedIds.includes(id)) return prev;
+      return {
+        ...prev,
+        updatedAtUtc: new Date().toISOString(),
+        autoLinkDecisions: {
+          accepted: decisions.accepted.filter((a) => a.id !== id),
+          dismissedIds: [...decisions.dismissedIds, id],
+        },
       };
     });
   };
@@ -567,6 +613,8 @@ export function App() {
                 onAppendLedger={handleAppendLedger}
                 onRouteSmartClue={handleRouteSmartClue}
                 onSelectModule={setActiveModule}
+                onAcceptAutoLink={handleAcceptAutoLink}
+                onDismissAutoLink={handleDismissAutoLink}
               />
             )}
 

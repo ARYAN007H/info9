@@ -18,6 +18,7 @@ import {
 } from '../core/pivotChains';
 import { listConnectors } from '../connectors';
 import type { SmartRouteAction } from '../utils/smartIntake';
+import type { AutoLinkSuggestion } from '../utils/autoLinks';
 import ProvenanceBadge from './ProvenanceBadge';
 import { CaseGraphView } from './CaseGraphView';
 import { Button, NoticeBanner, Panel, PivotChip, SegmentedTabs } from './ui';
@@ -36,6 +37,8 @@ interface InvestigationRunModuleProps {
   initialKind?: EntityKind;
   onRouteSmartClue?: (action: SmartRouteAction) => void;
   onSelectModule?: (moduleId: ModuleId) => void;
+  onAcceptAutoLink?: (suggestion: AutoLinkSuggestion) => void;
+  onDismissAutoLink?: (id: string) => void;
 }
 
 const STATUS_STYLES: Record<StepStatus, { chip: string; label: string }> = {
@@ -72,6 +75,8 @@ export function InvestigationRunModule({
   initialKind,
   onRouteSmartClue,
   onSelectModule,
+  onAcceptAutoLink,
+  onDismissAutoLink,
 }: InvestigationRunModuleProps) {
   const [viewMode, setViewMode] = useState<'chains' | 'graph'>('chains');
   const [inputKind, setInputKind] = useState<EntityKind>(
@@ -176,6 +181,8 @@ export function InvestigationRunModule({
           activeCase={activeCase}
           onRouteClue={onRouteSmartClue}
           onSelectModule={onSelectModule}
+          onAcceptAutoLink={onAcceptAutoLink}
+          onDismissAutoLink={onDismissAutoLink}
         />
       ) : (
         <>

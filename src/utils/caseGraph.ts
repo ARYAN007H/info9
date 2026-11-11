@@ -185,6 +185,16 @@ export function buildCaseInvestigationGraph(
     addEdge(rootId, ledId, `ledger #${entry.index}`);
   }
 
+  // 5. Analyst-accepted auto-links (src/utils/autoLinks.ts) — woven in as
+  //    highlighted edges. Endpoints must exist in the current case state;
+  //    stale links (e.g. a removed domain) drop out silently.
+  for (const link of activeCase.autoLinkDecisions?.accepted ?? []) {
+    if (!nodesMap.has(link.sourceNodeId) || !nodesMap.has(link.targetNodeId)) {
+      continue;
+    }
+    addEdge(link.sourceNodeId, link.targetNodeId, link.edgeLabel || 'accepted link', true);
+  }
+
   // Compute node degrees
   const degreeMap = new Map<string, number>();
   for (const e of edges) {
