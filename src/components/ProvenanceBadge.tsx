@@ -28,19 +28,23 @@ const STATUS_STYLES: Record<
  * whether a value came live from the named source, was derived locally, or
  * is an explicit data gap — a missing answer is never dressed up as data.
  */
-export default function ProvenanceBadge({
+export function ProvenanceBadge({
   meta,
+  provenance,
   compact = false,
 }: {
-  meta: ProvenanceMeta;
+  meta?: ProvenanceMeta;
+  provenance?: ProvenanceMeta;
   compact?: boolean;
 }) {
-  const style = STATUS_STYLES[meta.status];
+  const resolved = meta ?? provenance;
+  if (!resolved) return null;
+  const style = STATUS_STYLES[resolved.status];
   const title =
-    meta.status === 'UNAVAILABLE'
-      ? `Data gap — ${meta.note || meta.source}`
-      : `${meta.status} from ${meta.source} at ${formatFetchedAt(meta.fetchedAtUtc)}${
-          meta.note ? ` (${meta.note})` : ''
+    resolved.status === 'UNAVAILABLE'
+      ? `Data gap — ${resolved.note || resolved.source}`
+      : `${resolved.status} from ${resolved.source} at ${formatFetchedAt(resolved.fetchedAtUtc)}${
+          resolved.note ? ` (${resolved.note})` : ''
         }`;
 
   return (
@@ -52,9 +56,11 @@ export default function ProvenanceBadge({
       <span>{style.label}</span>
       {!compact && (
         <span className="font-medium normal-case tracking-normal opacity-80">
-          {meta.status === 'UNAVAILABLE' ? meta.note || meta.source : meta.source}
+          {resolved.status === 'UNAVAILABLE' ? resolved.note || resolved.source : resolved.source}
         </span>
       )}
     </span>
   );
 }
+
+export default ProvenanceBadge;

@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import type {
   InvestigationCase,
+  ModuleId,
+  ProvenanceMeta,
   SanctionsMatchWeights,
 } from '../types/osint';
 import {
@@ -21,6 +23,7 @@ import {
   verifyEvidenceLedgerChain,
 } from '../utils/osintForensics';
 import { OfacLiveScreening } from './OfacLiveScreening';
+import { CryptoWalletPanel } from './CryptoWalletPanel';
 import { MODULE_CATALOG } from './moduleCatalog';
 import {
   Button,
@@ -44,12 +47,14 @@ interface SanctionsLedgerModuleProps {
     targetJurisdiction: string;
   }) => void;
   onAppendLedger: (entry: {
-    module: 'sanctions';
+    module: ModuleId;
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
     snapshotDataUrl?: string;
+    provenance?: ProvenanceMeta;
   }) => void;
+  initialWallet?: string;
   onExportMarkdown?: () => void;
   onPivot?: (action: SmartRouteAction) => void;
 }
@@ -79,6 +84,7 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
   activeCase,
   onUpdateSanctionsQuery,
   onAppendLedger,
+  initialWallet,
   onExportMarkdown,
   onPivot,
 }) => {
@@ -181,6 +187,15 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
           setStatusMessage(
             `Recorded live OFAC screening finding for "${hit.listedName}" to the evidence ledger.`
           );
+        }}
+      />
+
+      {/* Crypto Wallet Forensics & OFAC SDN Sanctioned-Wallet Screening */}
+      <CryptoWalletPanel
+        initialAddress={initialWallet}
+        onCommitLedger={(entry) => {
+          onAppendLedger(entry);
+          setStatusMessage(`Recorded "${entry.targetLabel}" to the evidence ledger.`);
         }}
       />
 

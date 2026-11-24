@@ -4,6 +4,7 @@ interface EmptyStateProps {
   icon?: ReactNode;
   title: string;
   hint?: string;
+  body?: string;
   action?: ReactNode;
   className?: string;
 }
@@ -13,9 +14,11 @@ export function EmptyState({
   icon,
   title,
   hint,
+  body,
   action,
   className = '',
 }: EmptyStateProps) {
+  const description = hint ?? body;
   return (
     <div
       className={`flex flex-col items-center justify-center px-8 py-12 text-center ${className}`}
@@ -26,8 +29,8 @@ export function EmptyState({
         </div>
       )}
       <p className="text-sm font-semibold text-ink">{title}</p>
-      {hint && (
-        <p className="mt-1 max-w-sm text-xs leading-5 text-ink-3">{hint}</p>
+      {description && (
+        <p className="mt-1 max-w-sm text-xs leading-5 text-ink-3">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
     </div>

@@ -12,7 +12,12 @@ import {
   Search,
   UserSearch,
 } from 'lucide-react';
-import type { InvestigationCase } from '../types/osint';
+import type {
+  EnrichedSocialProfile,
+  InvestigationCase,
+  ModuleId,
+  ProvenanceMeta,
+} from '../types/osint';
 import type { WnnSite } from '../utils/wnn';
 import {
   fetchWnnDataset,
@@ -44,14 +49,23 @@ import {
   Well,
 } from './ui';
 
+import {
+  DeepEmailIntelPanel,
+  DeepProfileEnrichPanel,
+  EnhancedPhoneIntelPanel,
+} from './DeepIdentityPanels';
+
 interface IdentitySweepModuleProps {
   activeCase: InvestigationCase;
   onAppendLedger: (entry: {
-    module: 'identity';
+    module: ModuleId;
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    provenance?: ProvenanceMeta;
   }) => void;
+  onCommitProfile?: (profile: EnrichedSocialProfile) => void;
+  onPivotToModule?: (moduleId: ModuleId, targetValue: string, subMode?: string) => void;
   initialValue?: string;
   initialSubMode?: 'username' | 'email' | 'phone';
   onRouteSmartClue?: (action: SmartRouteAction) => void;
@@ -74,6 +88,8 @@ const VERDICT_STYLES: Record<string, { chip: string; label: string }> = {
 
 export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
   onAppendLedger,
+  onCommitProfile,
+  onPivotToModule,
   initialValue,
   initialSubMode,
   onRouteSmartClue,
@@ -438,13 +454,27 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
         )}
       </Panel>
 
-      {/* TAB 1: USERNAME SWEEP */}
+      {/* TAB 1: USERNAME SWEEP + DEEP MULTI-PLATFORM ENRICHER */}
+      {subMode === 'username' && (
+        <DeepProfileEnrichPanel
+          activeHandle={username}
+          onCommitProfile={(p) => {
+            onCommitProfile?.(p);
+            setStatusMessage(
+              `Committed enriched ${p.platform} profile (@${p.handle}) to Case Graph & Behavioral Heatmap.`
+            );
+          }}
+          onCommitLedger={(entry) => onAppendLedger(entry)}
+          onPivotToModule={(mod, val, sm) => onPivotToModule?.(mod, val, sm)}
+        />
+      )}
+
       {subMode === 'username' && !results && !isSweeping && (
         <Panel>
           <EmptyState
             icon={<UserSearch className="h-5 w-5" />}
-            title="No sweep run yet"
-            hint="Enter a handle above and sweep. Each probe visits the site's own page and looks for the profile's detection signature."
+            title="No WhatsMyName sweep run yet"
+            hint="Enter a handle above and press Sweep username to probe ~700 sites, or click Enrich handle across 8 platforms above."
           />
         </Panel>
       )}
@@ -543,7 +573,22 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
         </div>
       )}
 
-      {/* TAB 2: EMAIL & GRAVATAR RECON */}
+      {/* TAB 2: EMAIL & GRAVATAR RECON + DEEP EMAIL INTELLIGENCE */}
+      {subMode === 'email' && (
+        <DeepEmailIntelPanel
+          activeEmail={emailInput}
+          onCommitLedger={(entry) => onAppendLedger(entry)}
+          onPivotToModule={(mod, val, sm) => {
+            if (mod === 'identity' && sm === 'username') {
+              setUsername(val.replace(/^@/, ''));
+              setSubMode('username');
+            } else {
+              onPivotToModule?.(mod, val, sm);
+            }
+          }}
+        />
+      )}
+
       {subMode === 'email' && emailResult && (
         <Panel
           title={`Email OSINT Report — ${emailResult.profile.email}`}
@@ -673,7 +718,14 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
         </Panel>
       )}
 
-      {/* TAB 3: PHONE & TIMEZONE OVERLAP */}
+      {/* TAB 3: PHONE & TIMEZONE OVERLAP + LIBPHONENUMBER & DORKS */}
+      {subMode === 'phone' && (
+        <EnhancedPhoneIntelPanel
+          activePhone={primaryPhoneInput}
+          onPivotToModule={(mod, val, sm) => onPivotToModule?.(mod, val, sm)}
+        />
+      )}
+
       {subMode === 'phone' && phoneOverlap && (
         <Panel
           title={`Phone Attribution & Timezone Overlap`}

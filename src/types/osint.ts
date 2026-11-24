@@ -96,6 +96,7 @@ export interface OsintEntity {
   summary: string;
   attributes: Record<string, string>;
   sourceUrl?: string;
+  provenance?: ProvenanceMeta;
 }
 
 export interface OwnershipEdge {

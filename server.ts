@@ -2,9 +2,9 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 import {
-  buildGeminiRequestBody,
-  extractGeminiText,
+  VISION_GEO_PROMPT,
   parseVisionGeolocationPayload,
 } from './src/utils/visionGeolocate';
 import {
@@ -16,6 +16,30 @@ import {
   parseOfacSdnCsv,
   toSanctionsCandidates,
 } from './src/utils/sanctionsData';
+import { Info9Database, getConnectorStatusMatrix } from './src/server/database';
+import {
+  extractLivePageIntelligence,
+  runUniversalWebSearch,
+} from './src/server/webHunter';
+import {
+  enrichUsernameProfiles,
+  runDeepEmailRecon,
+} from './src/server/identityEnrich';
+import {
+  lookupCryptoWallet,
+  lookupMaritimeVessel,
+  runInfraAttribution,
+  searchGlobalPublicRecords,
+} from './src/server/recordsAndIntel';
+import {
+  executeRecursivePivotSpider,
+  normalizeSpiderSeedKind,
+} from './src/server/recursivePivot';
+import {
+  runEvidenceCopilotAnalysis,
+  type CopilotMode,
+} from './src/server/aiCopilot';
+import type { InvestigationCase } from './src/types/osint';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +47,7 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const db = new Info9Database(process.env.INFO9_DB_PATH || undefined);
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -157,14 +182,14 @@ async function startServer() {
     }
   });
 
-  // AI photo geolocation (optional — needs a free Gemini key in GEMINI_API_KEY).
+  // AI photo geolocation (optional — uses server-side @google/genai when GEMINI_API_KEY is set).
   // The model output is a DERIVED hypothesis; corroboration stays zero-key.
   app.post('/api/osint/vision-geolocate', async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
       res.status(501).json({
         error:
-          'GEMINI_API_KEY is not configured on this server. Add it to your .env (free key at aistudio.google.com/apikey) to enable AI photo geolocation. All other info9 features work without it.',
+          'GEMINI_API_KEY is not configured on this server. Configure GEMINI_API_KEY in the server environment to enable AI photo geolocation. All other info9 features work without it.',
       });
       return;
     }
@@ -179,32 +204,28 @@ async function startServer() {
       return;
     }
 
-    const model = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash');
+    const model = String(process.env.GEMINI_MODEL || 'gemini-4-hydrogen');
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000);
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
-          },
-          body: JSON.stringify(buildGeminiRequestBody(imageBase64, mimeType)),
-        }
-      );
-      clearTimeout(timeout);
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' },
+        },
+      });
+      const response = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            { inlineData: { mimeType, data: imageBase64 } },
+            { text: VISION_GEO_PROMPT },
+          ],
+        },
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
 
-      const json = await geminiRes.json().catch(() => null);
-      if (!geminiRes.ok) {
-        const msg = json?.error?.message || `Gemini returned HTTP ${geminiRes.status}`;
-        res.status(502).json({ error: `Vision upstream error: ${msg}` });
-        return;
-      }
-
-      const candidates = parseVisionGeolocationPayload(extractGeminiText(json));
+      const candidates = parseVisionGeolocationPayload(response.text ?? '');
       res.json({
         candidates,
         model,
@@ -595,6 +616,325 @@ async function startServer() {
       githubLogins,
       fetchedAtUtc: new Date().toISOString(),
     });
+  });
+
+  // =========================================================================
+  // PHASE 1–3 INTELLIGENCE ENDPOINTS (Universal Web Discovery, Deep Identity,
+  // Public Records, Infra Attribution, Crypto/Maritime, SSE Spider, SQLite, AI)
+  // =========================================================================
+
+  // Phase 1: Universal Multi-Source Open-Web Search Aggregator
+  app.get('/api/osint/web-search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length > 240) {
+      res.status(400).json({ error: 'Search query (1..240 chars) required' });
+      return;
+    }
+    const sourcesRaw = String(req.query.sources || '').trim();
+    const sources = sourcesRaw
+      ? sourcesRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+    try {
+      const result = await runUniversalWebSearch(q, sources);
+      res.json(result);
+    } catch (err) {
+      res.status(502).json({
+        error: `Universal search failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 1: SSRF-Guarded Live Page Intelligence Extractor + SQLite FTS5 Archive
+  app.post('/api/osint/web-extract', async (req, res) => {
+    const url = String(req.body?.url || '').trim();
+    const caseId = String(req.body?.caseId || '').trim();
+    if (!url || url.length > 800) {
+      res.status(400).json({ error: 'Valid public http(s) URL required' });
+      return;
+    }
+    try {
+      const { page, fullText, headers } = await extractLivePageIntelligence(url);
+      if (caseId) {
+        db.saveCollectedPage(caseId, page, fullText);
+      }
+      res.json({
+        page,
+        archivedToSqlite: Boolean(caseId),
+        headers: {
+          server: headers['server'] || null,
+          poweredBy: headers['x-powered-by'] || null,
+          contentType: headers['content-type'] || null,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = /blocked|not permitted|malformed|only http/i.test(msg) ? 400 : 502;
+      res.status(status).json({ error: msg });
+    }
+  });
+
+  // Phase 1: Deep Username Profile Enrichment (GitHub + commit emails, GitLab, Reddit, HN, Keybase, Bluesky, Mastodon, Dev.to)
+  app.get('/api/osint/identity/enrich', async (req, res) => {
+    const handle = String(req.query.handle || '').trim();
+    if (!handle) {
+      res.status(400).json({ error: 'handle query parameter required' });
+      return;
+    }
+    try {
+      const profiles = await enrichUsernameProfiles(handle);
+      res.json({
+        handle,
+        count: profiles.length,
+        profiles,
+        fetchedAtUtc: new Date().toISOString(),
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Profile enrichment failed',
+      });
+    }
+  });
+
+  // Phase 1: Deep Email Recon (Gravatar JSON, OpenPGP, ProtonMail HKP creation date, XposedOrNot breaches, GitHub commits)
+  app.get('/api/osint/email-recon-deep', async (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    const md5 = String(req.query.md5 || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@([a-z0-9-]+\.)+[a-z]{2,}$/i.test(email) || !/^[a-f0-9]{32}$/.test(md5)) {
+      res.status(400).json({ error: 'Valid email and 32-char md5 query parameters required' });
+      return;
+    }
+    try {
+      const data = await runDeepEmailRecon(email, md5);
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({
+        error: `Deep email recon failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 2: Global Public Records (SEC EDGAR, CourtListener, OpenSanctions, ICIJ, optional UK Companies House)
+  app.get('/api/osint/public-records', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length > 200) {
+      res.status(400).json({ error: 'Query parameter q required' });
+      return;
+    }
+    try {
+      const data = await searchGlobalPublicRecords(q);
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({
+        error: `Public records search failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 2: Deep Infrastructure Attribution (URLScan Reverse-IP, OTX Passive DNS/Pulses, URLhaus, ThreatFox, BGPView, Favicon Hash)
+  app.get('/api/osint/infra/attribution', async (req, res) => {
+    const domain = String(req.query.domain || '').trim();
+    const ip = req.query.ip ? String(req.query.ip).trim() : undefined;
+    if (!domain || domain.length > 253) {
+      res.status(400).json({ error: 'Valid domain parameter required' });
+      return;
+    }
+    try {
+      const data = await runInfraAttribution(domain, ip);
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({
+        error: `Infrastructure attribution failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 2: Crypto Wallet Intelligence + OFAC SDN Cross-Check
+  app.get('/api/osint/crypto/wallet', async (req, res) => {
+    const address = String(req.query.address || '').trim();
+    if (!address) {
+      res.status(400).json({ error: 'Wallet address parameter required' });
+      return;
+    }
+    try {
+      const data = await lookupCryptoWallet(address, ofacCache?.candidates ?? []);
+      res.json(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(/enter a valid/i.test(msg) ? 400 : 502).json({ error: msg });
+    }
+  });
+
+  // Phase 2: Maritime Vessel Lookup + OFAC SDN Vessel Cross-Check
+  app.get('/api/osint/maritime/vessel', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length > 140) {
+      res.status(400).json({ error: 'Vessel name, IMO, or MMSI required' });
+      return;
+    }
+    try {
+      const data = await lookupMaritimeVessel(q, ofacCache?.candidates ?? []);
+      res.json(data);
+    } catch (err) {
+      res.status(502).json({
+        error: `Maritime lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 2: Recursive Multi-Hop Pivot Spider (SSE Stream, Depth 1-3)
+  app.get('/api/osint/pivot-spider', async (req, res) => {
+    const target = String(req.query.target || '').trim();
+    const kind = normalizeSpiderSeedKind(String(req.query.kind || 'domain'));
+    const depth = Number(req.query.depth || 2);
+    const caseId = String(req.query.caseId || 'default-case').trim();
+
+    if (!target || target.length > 200) {
+      res.status(400).json({ error: 'Valid target query parameter required' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    let closed = false;
+    req.on('close', () => {
+      closed = true;
+    });
+
+    const emit = (event: unknown) => {
+      if (closed) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+      await executeRecursivePivotSpider(
+        { caseId, seedKind: kind, seedValue: target, maxDepth: depth },
+        db,
+        emit
+      );
+    } catch (err) {
+      emit({
+        type: 'error',
+        jobId: 'error',
+        message: err instanceof Error ? err.message : 'Spider error',
+      });
+    } finally {
+      if (!closed) {
+        res.end();
+      }
+    }
+  });
+
+  // Phase 3: Evidence-Grounded AI Analyst Copilot (Server-side @google/genai)
+  app.post('/api/osint/copilot/analyze', async (req, res) => {
+    const mode = String(req.body?.mode || 'briefing_qa') as CopilotMode;
+    const caseData = req.body?.caseData as InvestigationCase | undefined;
+    const question = req.body?.question ? String(req.body.question) : undefined;
+    const rawText = req.body?.rawText ? String(req.body.rawText) : undefined;
+
+    if (!caseData || !caseData.id) {
+      res.status(400).json({ error: 'Valid caseData payload required' });
+      return;
+    }
+    if (!['ner_extract', 'ach_matrix', 'next_pivots', 'briefing_qa'].includes(mode)) {
+      res.status(400).json({ error: 'Invalid copilot analysis mode' });
+      return;
+    }
+    if (!process.env.GEMINI_API_KEY?.trim()) {
+      res.status(501).json({
+        error:
+          'GEMINI_API_KEY is not configured in the server environment. Configure GEMINI_API_KEY to run Evidence-Grounded AI Copilot analyses. All zero-key collection, timeline, graph, and SQLite features work without it.',
+      });
+      return;
+    }
+
+    try {
+      const result = await runEvidenceCopilotAnalysis({
+        mode,
+        caseData,
+        question,
+        rawText,
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(502).json({
+        error: `AI Copilot analysis failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
+
+  // Phase 3: SQLite Case Persistence, FTS5 Search, Scan Jobs & Connector Matrix
+  app.get('/api/db/cases', (_req, res) => {
+    try {
+      res.json({
+        cases: db.listCases(),
+        stats: db.getStats(),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'DB read failed' });
+    }
+  });
+
+  app.put('/api/db/cases/:id', (req, res) => {
+    const caseData = req.body as InvestigationCase | undefined;
+    if (!caseData || !caseData.id || caseData.id !== req.params.id) {
+      res.status(400).json({ error: 'Case payload id must match route parameter' });
+      return;
+    }
+    try {
+      db.upsertCase(caseData);
+      res.json({ ok: true, id: caseData.id, stats: db.getStats() });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'DB save failed' });
+    }
+  });
+
+  app.delete('/api/db/cases/:id', (req, res) => {
+    try {
+      db.deleteCase(req.params.id);
+      res.json({ ok: true, id: req.params.id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'DB delete failed' });
+    }
+  });
+
+  app.get('/api/db/search', (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const caseId = req.query.caseId ? String(req.query.caseId).trim() : undefined;
+    if (!q) {
+      res.json({ hits: [] });
+      return;
+    }
+    try {
+      res.json({ hits: db.searchArchivedPages(q, caseId) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'FTS5 search failed' });
+    }
+  });
+
+  app.get('/api/db/jobs', (req, res) => {
+    const caseId = req.query.caseId ? String(req.query.caseId).trim() : undefined;
+    try {
+      res.json({ jobs: db.listScanJobs(caseId) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Job listing failed' });
+    }
+  });
+
+  app.get('/api/db/stats', (_req, res) => {
+    try {
+      res.json({
+        stats: db.getStats(),
+        connectors: getConnectorStatusMatrix(),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Stats failed' });
+    }
   });
 
   if (process.env.NODE_ENV !== 'production') {

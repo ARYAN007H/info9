@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import type {
   InvestigationCase,
+  ModuleId,
   OsintEntity,
   OwnershipEdge,
+  ProvenanceMeta,
 } from '../types/osint';
 import type { SmartRouteAction } from '../utils/smartIntake';
 import {
@@ -23,6 +25,7 @@ import {
 } from '../services/osintApis';
 import { analyzeCorporateGraphTopology } from '../utils/osintForensics';
 import { MODULE_CATALOG } from './moduleCatalog';
+import { PublicRecordsMaritimePanel } from './PublicRecordsMaritimePanel';
 import {
   Button,
   DataValue,
@@ -45,10 +48,11 @@ interface DossierShellModuleProps {
   onAddOwnershipEdge: (edge: OwnershipEdge) => void;
   onPivotToSanctions: (entityName: string, jurisdiction: string) => void;
   onAppendLedger: (entry: {
-    module: 'dossier';
+    module: ModuleId;
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    provenance?: ProvenanceMeta;
   }) => void;
   initialQuery?: string;
   onPivot?: (action: SmartRouteAction) => void;
@@ -617,6 +621,13 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
           </Panel>
         </div>
       )}
+
+      <PublicRecordsMaritimePanel
+        onCommitLedger={(entry) => {
+          onAppendLedger(entry);
+          setStatusMessage(`Recorded "${entry.targetLabel}" to the evidence ledger.`);
+        }}
+      />
     </div>
   );
 };

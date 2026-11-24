@@ -7,7 +7,13 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react';
-import type { InfraDomainRecord, InvestigationCase, ModuleId } from '../types/osint';
+import type {
+  InfraDomainRecord,
+  InvestigationCase,
+  ModuleId,
+  OsintEntity,
+  ProvenanceMeta,
+} from '../types/osint';
 import type { EntityKind } from '../connectors/types';
 import {
   CHAIN_RECIPES,
@@ -21,22 +27,27 @@ import type { SmartRouteAction } from '../utils/smartIntake';
 import type { AutoLinkSuggestion } from '../utils/autoLinks';
 import ProvenanceBadge from './ProvenanceBadge';
 import { CaseGraphView } from './CaseGraphView';
+import { RecursiveSpiderPanel } from './RecursiveSpiderPanel';
 import { Button, NoticeBanner, Panel, PivotChip, SegmentedTabs } from './ui';
 
 interface InvestigationRunModuleProps {
   activeCase: InvestigationCase;
   onAddInfraRecord: (record: InfraDomainRecord) => void;
+  onAddEntities?: (entities: OsintEntity[]) => void;
+  onMergeEntities?: (primaryEntityId: string, duplicateEntityId: string) => void;
   onAppendLedger: (entry: {
-    module: 'dossier';
+    module: ModuleId;
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
     snapshotDataUrl?: string;
+    provenance?: ProvenanceMeta;
   }) => void;
   initialTarget?: string;
   initialKind?: EntityKind;
   onRouteSmartClue?: (action: SmartRouteAction) => void;
   onSelectModule?: (moduleId: ModuleId) => void;
+  onPivotToModule?: (moduleId: ModuleId, targetValue: string, subMode?: string) => void;
   onAcceptAutoLink?: (suggestion: AutoLinkSuggestion) => void;
   onDismissAutoLink?: (id: string) => void;
 }
@@ -70,15 +81,15 @@ const KIND_OPTIONS: Array<{ id: EntityKind; label: string }> = [
 export function InvestigationRunModule({
   activeCase,
   onAddInfraRecord,
+  onAddEntities,
+  onMergeEntities,
   onAppendLedger,
   initialTarget,
   initialKind,
   onRouteSmartClue,
-  onSelectModule,
-  onAcceptAutoLink,
-  onDismissAutoLink,
+  onPivotToModule,
 }: InvestigationRunModuleProps) {
-  const [viewMode, setViewMode] = useState<'chains' | 'graph'>('chains');
+  const [viewMode, setViewMode] = useState<'spider' | 'chains' | 'graph'>('spider');
   const [inputKind, setInputKind] = useState<EntityKind>(
     initialKind || 'domain'
   );
@@ -164,25 +175,45 @@ export function InvestigationRunModule({
         <SegmentedTabs
           ariaLabel="Pivot console view mode"
           tabs={[
-            { id: 'chains', label: '1. Automated Pivot Chains' },
-            { id: 'graph', label: '2. Interactive Case Link Graph' },
+            { id: 'spider', label: '1. Recursive Spider (SSE)' },
+            { id: 'chains', label: '2. Classic Chains' },
+            { id: 'graph', label: '3. Interactive Case Graph' },
           ]}
           active={viewMode}
           onChange={(id) => setViewMode(id)}
         />
         <span className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3">
           <Network className="h-3.5 w-3.5 text-accent" />
-          Click any emitted chip to pivot across instruments
+          Depth 1–3 live SSE spidering · Cytoscape force graph · Maltego transforms
         </span>
       </div>
 
-      {viewMode === 'graph' ? (
+      {viewMode === 'spider' ? (
+        <RecursiveSpiderPanel
+          caseId={activeCase.id}
+          initialTarget={target || undefined}
+          onAddEntities={onAddEntities}
+          onCommitLedger={(entry) =>
+            onAppendLedger({
+              module: entry.module,
+              targetLabel: entry.targetLabel,
+              findingSummary: entry.findingSummary,
+              sourceUrl: entry.sourceUrl,
+              provenance: entry.provenance,
+            })
+          }
+          onPivotToModule={onPivotToModule}
+        />
+      ) : viewMode === 'graph' ? (
         <CaseGraphView
           activeCase={activeCase}
-          onRouteClue={onRouteSmartClue}
-          onSelectModule={onSelectModule}
-          onAcceptAutoLink={onAcceptAutoLink}
-          onDismissAutoLink={onDismissAutoLink}
+          onPivotInvestigate={(kind, val) => {
+            setInputKind(kind);
+            setTarget(val);
+            setViewMode('spider');
+          }}
+          onPivotToModule={onPivotToModule}
+          onMergeEntities={onMergeEntities}
         />
       ) : (
         <>

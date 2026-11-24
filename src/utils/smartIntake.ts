@@ -215,18 +215,18 @@ export function classifyUniversalIntake(
       summary: `URL on host ${hostname}`,
       recommendedActions: [
         {
-          id: 'webhunter-extract',
-          label: 'Extract page intel (emails, trackers, favicon hash)',
-          moduleId: 'webhunter',
-          targetValue: trimmed,
-          subMode: 'extract',
-        },
-        {
           id: 'for-wayback',
           label: 'Check Wayback archival history',
           moduleId: 'forensics',
           targetValue: trimmed,
           subMode: 'wayback',
+        },
+        {
+          id: 'webhunter-extract',
+          label: 'Extract page intel (emails, trackers, favicon hash)',
+          moduleId: 'webhunter',
+          targetValue: trimmed,
+          subMode: 'extract',
         },
         {
           id: 'infra-host',

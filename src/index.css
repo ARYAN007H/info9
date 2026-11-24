@@ -48,11 +48,14 @@
 @theme inline {
   --color-app: var(--app);
   --color-panel: var(--panel);
+  --color-surface: var(--panel);
   --color-well: var(--well);
   --color-line: var(--line);
+  --color-rule: var(--line);
   --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
+  --color-muted: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);

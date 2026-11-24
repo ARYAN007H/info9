@@ -8,7 +8,11 @@ export type GraphNodeKind =
   | 'ip'
   | 'asn'
   | 'coordinates'
-  | 'ledger';
+  | 'ledger'
+  | 'profile'
+  | 'tracker'
+  | 'wallet'
+  | 'email';
 
 export interface CaseGraphNode {
   id: string;
@@ -185,7 +189,103 @@ export function buildCaseInvestigationGraph(
     addEdge(rootId, ledId, `ledger #${entry.index}`);
   }
 
-  // 5. Analyst-accepted auto-links (src/utils/autoLinks.ts) — woven in as
+  // 5. Enriched Social Profiles (cross-linking handles, commit emails & linked domains)
+  for (const prof of activeCase.enrichedProfiles ?? []) {
+    const profId = `prof:${prof.platform.toLowerCase()}:${prof.handle.toLowerCase()}`;
+    addNode({
+      id: profId,
+      label: `@${prof.handle} (${prof.platform})`,
+      sublabel: [prof.displayName, prof.location].filter(Boolean).join(' · ') || prof.profileUrl,
+      kind: 'profile',
+      pivotKind: 'entity-name',
+      pivotValue: prof.handle,
+    });
+    addEdge(rootId, profId, `${prof.platform} profile`);
+
+    for (const em of prof.discoveredEmails.slice(0, 3)) {
+      const emId = `email:${em.toLowerCase()}`;
+      addNode({
+        id: emId,
+        label: em,
+        sublabel: 'Discovered commit/profile email',
+        kind: 'email',
+        pivotKind: 'entity-name',
+        pivotValue: em,
+      });
+      addEdge(profId, emId, 'public email', true);
+    }
+    if (prof.websiteUrl) {
+      try {
+        const host = new URL(
+          prof.websiteUrl.startsWith('http') ? prof.websiteUrl : `https://${prof.websiteUrl}`
+        ).hostname.toLowerCase();
+        if (host && host.includes('.')) {
+          const domId = `dom:${host}`;
+          addNode({
+            id: domId,
+            label: host,
+            sublabel: 'Linked profile website',
+            kind: 'domain',
+            pivotKind: 'domain',
+            pivotValue: host,
+          });
+          addEdge(profId, domId, 'linked website', true);
+        }
+      } catch {
+        // ignore invalid websiteUrl
+      }
+    }
+  }
+
+  // 6. Archived Web Hunter pages (linking domains -> emails, trackers, wallets)
+  for (const pg of (activeCase.collectedPages ?? []).slice(-10)) {
+    const domId = `dom:${pg.domain}`;
+    addNode({
+      id: domId,
+      label: pg.domain,
+      sublabel: `Captured page: ${pg.title.slice(0, 36)}`,
+      kind: 'domain',
+      pivotKind: 'domain',
+      pivotValue: pg.domain,
+    });
+    addEdge(rootId, domId, 'captured web host');
+
+    for (const em of pg.artifacts.emails.slice(0, 3)) {
+      const emId = `email:${em.toLowerCase()}`;
+      addNode({
+        id: emId,
+        label: em,
+        sublabel: `Extracted from ${pg.domain}`,
+        kind: 'email',
+        pivotKind: 'entity-name',
+        pivotValue: em,
+      });
+      addEdge(domId, emId, 'page email', true);
+    }
+    for (const tr of pg.artifacts.analyticsIds.slice(0, 3)) {
+      const trId = `trk:${tr.kind}:${tr.id}`;
+      addNode({
+        id: trId,
+        label: tr.id,
+        sublabel: `${tr.kind} tracker ID`,
+        kind: 'tracker',
+      });
+      addEdge(domId, trId, 'analytics ID', true);
+    }
+    for (const w of pg.artifacts.cryptoWallets.slice(0, 3)) {
+      const wId = `wal:${w.chain}:${w.address}`;
+      addNode({
+        id: wId,
+        label: `${w.chain} ${w.address.slice(0, 12)}…`,
+        sublabel: w.address,
+        kind: 'wallet',
+        pivotValue: w.address,
+      });
+      addEdge(domId, wId, 'crypto wallet', true);
+    }
+  }
+
+  // 7. Analyst-accepted auto-links (src/utils/autoLinks.ts) — woven in as
   //    highlighted edges. Endpoints must exist in the current case state;
   //    stale links (e.g. a removed domain) drop out silently.
   for (const link of activeCase.autoLinkDecisions?.accepted ?? []) {
@@ -209,10 +309,20 @@ export function buildCaseInvestigationGraph(
   const nonCenter = rawNodes.filter((n) => n.kind !== 'case_center');
 
   const innerRing = nonCenter.filter(
-    (n) => n.kind === 'entity' || n.kind === 'domain' || n.kind === 'coordinates'
+    (n) =>
+      n.kind === 'entity' ||
+      n.kind === 'domain' ||
+      n.kind === 'coordinates' ||
+      n.kind === 'profile'
   );
   const outerRing = nonCenter.filter(
-    (n) => n.kind === 'ip' || n.kind === 'asn' || n.kind === 'ledger'
+    (n) =>
+      n.kind === 'ip' ||
+      n.kind === 'asn' ||
+      n.kind === 'ledger' ||
+      n.kind === 'tracker' ||
+      n.kind === 'wallet' ||
+      n.kind === 'email'
   );
 
   const positioned: CaseGraphNode[] = [];

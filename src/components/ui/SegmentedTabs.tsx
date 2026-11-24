@@ -4,33 +4,39 @@ interface SegmentedTab<T extends string> {
 }
 
 interface SegmentedTabsProps<T extends string> {
-  tabs: ReadonlyArray<SegmentedTab<T>>;
-  active: T;
+  tabs?: ReadonlyArray<SegmentedTab<T>>;
+  items?: ReadonlyArray<SegmentedTab<T>>;
+  active?: T;
+  value?: T;
   onChange: (id: T) => void;
   size?: 'sm' | 'md';
-  ariaLabel: string;
+  ariaLabel?: string;
   className?: string;
 }
 
 /** Inset instrument switcher — the one segmented control on the bench. */
 export function SegmentedTabs<T extends string>({
   tabs,
+  items,
   active,
+  value,
   onChange,
   size = 'md',
-  ariaLabel,
+  ariaLabel = 'View tabs',
   className = '',
 }: SegmentedTabsProps<T>) {
+  const list = tabs ?? items ?? [];
+  const current = active ?? value;
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`inline-flex items-center gap-0.5 rounded border border-line bg-app p-0.5 ${
+      className={`inline-flex flex-wrap items-center gap-0.5 rounded border border-line bg-app p-0.5 ${
         size === 'sm' ? 'text-[11px]' : 'text-xs'
       } ${className}`}
     >
-      {tabs.map((tab) => {
-        const isActive = tab.id === active;
+      {list.map((tab) => {
+        const isActive = tab.id === current;
         return (
           <button
             key={tab.id}

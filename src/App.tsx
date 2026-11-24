@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type {
+  CollectedWebPage,
+  EnrichedSocialProfile,
   InfraDomainRecord,
   InvestigationCase,
   ModuleId,
   OsintEntity,
   OwnershipEdge,
+  ProvenanceMeta,
 } from './types/osint';
+import type { EntityKind } from './connectors/types';
 import { DEFAULT_WORKSPACE_CASE } from './data/seedCases';
 import { createLinkedLedgerEntry, exportMispJson } from './utils/osintForensics';
 import { buildPrintableReportHtml } from './utils/reportGenerator';
@@ -15,6 +19,7 @@ import {
   parseAndVerifyCaseBundle,
   serializeCaseBundle,
 } from './utils/caseBundle';
+import { mergeCaseEntities } from './utils/graphAnalytics';
 import type { SmartRouteAction } from './utils/smartIntake';
 import { TopNavBar, type ProvenanceTally } from './components/TopNavBar';
 import { CaseSpine } from './components/CaseSpine';
@@ -29,6 +34,9 @@ import { SanctionsLedgerModule } from './components/SanctionsLedgerModule';
 import { FaceReconModule } from './components/FaceReconModule';
 import type { AutoLinkSuggestion } from './utils/autoLinks';
 import { AcousticDopplerModule } from './components/AcousticDopplerModule';
+import { WebHunterModule } from './components/WebHunterModule';
+import { TimelineHeatmapModule } from './components/TimelineHeatmapModule';
+import { CopilotVaultModule } from './components/CopilotVaultModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ReportBuilderModal } from './components/ReportBuilderModal';
 
@@ -138,6 +146,18 @@ export function App() {
     tab: 'username' | 'email' | 'phone';
     value: string;
   } | null>(null);
+  const [pendingWebHunterAction, setPendingWebHunterAction] = useState<{
+    targetValue: string;
+    subMode?: string;
+    nonce: number;
+  } | null>(null);
+  const [routedCryptoWallet, setRoutedCryptoWallet] = useState<
+    string | undefined
+  >(undefined);
+  const [routedInvestigatePayload, setRoutedInvestigatePayload] = useState<{
+    target: string;
+    kind?: EntityKind;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -147,6 +167,59 @@ export function App() {
       // Ignore quota exceeded
     }
   }, [caseStore, workspaceCase]);
+
+  // Hydrate cases saved in the local SQLite database on first boot
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/db/cases');
+        if (!res.ok) return;
+        const data = (await res.json()) as { cases?: InvestigationCase[] };
+        if (cancelled || !Array.isArray(data.cases) || data.cases.length === 0) {
+          return;
+        }
+        setCaseStore((prev) => {
+          const byId = new Map<string, InvestigationCase>();
+          for (const c of prev.cases) byId.set(c.id, c);
+          for (const remote of data.cases ?? []) {
+            const local = byId.get(remote.id);
+            if (
+              !local ||
+              (remote.updatedAtUtc &&
+                local.updatedAtUtc &&
+                remote.updatedAtUtc > local.updatedAtUtc)
+            ) {
+              byId.set(remote.id, remote);
+            }
+          }
+          return {
+            activeCaseId: prev.activeCaseId,
+            cases: Array.from(byId.values()),
+          };
+        });
+      } catch {
+        // Offline / server not reachable — localStorage remains authoritative
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Debounced auto-sync of active case to local SQLite backend (incl. FTS5 index)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fetch(`/api/db/cases/${encodeURIComponent(workspaceCase.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workspaceCase),
+      }).catch(() => {
+        // Non-fatal: localStorage backup stays current
+      });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [workspaceCase]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -198,6 +271,14 @@ export function App() {
       else gap += 1;
       if (weather.elevationMeters == null) gap += 1;
     }
+    for (const page of workspaceCase.collectedPages ?? []) {
+      if (page.provenance?.status === 'LIVE') live += 1;
+      else if (page.provenance?.status === 'DERIVED') derived += 1;
+    }
+    for (const prof of workspaceCase.enrichedProfiles ?? []) {
+      if (prof.provenance?.status === 'LIVE') live += 1;
+      else if (prof.provenance?.status === 'DERIVED') derived += 1;
+    }
     return { live, derived, gap };
   }, [workspaceCase]);
 
@@ -207,6 +288,7 @@ export function App() {
     findingSummary: string;
     sourceUrl: string;
     snapshotDataUrl?: string;
+    provenance?: ProvenanceMeta;
   }) => {
     setWorkspaceCase((prev) => {
       const nextBlock = createLinkedLedgerEntry(
@@ -232,6 +314,78 @@ export function App() {
         entities: [newEntity, ...prev.entities],
       };
     });
+  };
+
+  const handleAddEntitiesBatch = (newEntities: OsintEntity[]) => {
+    if (newEntities.length === 0) return;
+    setWorkspaceCase((prev) => {
+      const existingIds = new Set(prev.entities.map((e) => e.id));
+      const existingLabels = new Set(
+        prev.entities.map((e) => e.label.trim().toLowerCase())
+      );
+      const unique = newEntities.filter((e) => {
+        const key = e.label.trim().toLowerCase();
+        if (existingIds.has(e.id) || existingLabels.has(key)) return false;
+        existingIds.add(e.id);
+        existingLabels.add(key);
+        return true;
+      });
+      if (unique.length === 0) return prev;
+      return {
+        ...prev,
+        updatedAtUtc: new Date().toISOString(),
+        entities: [...unique, ...prev.entities],
+      };
+    });
+    setToast(`Added ${newEntities.length} entity node(s) to the case graph.`);
+  };
+
+  const handleMergeEntities = (
+    primaryEntityId: string,
+    duplicateEntityId: string
+  ) => {
+    setWorkspaceCase((prev) => {
+      const merged = mergeCaseEntities(prev, primaryEntityId, duplicateEntityId);
+      return {
+        ...merged,
+        updatedAtUtc: new Date().toISOString(),
+      };
+    });
+    setToast('Merged duplicate entities and re-wired ownership edges.');
+  };
+
+  const handleCommitCollectedPage = (page: CollectedWebPage) => {
+    setWorkspaceCase((prev) => {
+      const prevPages = prev.collectedPages ?? [];
+      const filtered = prevPages.filter((p) => p.url !== page.url);
+      return {
+        ...prev,
+        updatedAtUtc: new Date().toISOString(),
+        collectedPages: [page, ...filtered],
+      };
+    });
+    setToast(`Archived "${page.title || page.url}" into Case Graph & SQLite FTS5.`);
+  };
+
+  const handleCommitEnrichedProfile = (profile: EnrichedSocialProfile) => {
+    setWorkspaceCase((prev) => {
+      const prevProfiles = prev.enrichedProfiles ?? [];
+      const filtered = prevProfiles.filter(
+        (p) =>
+          !(
+            p.platform.toLowerCase() === profile.platform.toLowerCase() &&
+            p.handle.toLowerCase() === profile.handle.toLowerCase()
+          )
+      );
+      return {
+        ...prev,
+        updatedAtUtc: new Date().toISOString(),
+        enrichedProfiles: [profile, ...filtered],
+      };
+    });
+    setToast(
+      `Committed ${profile.platform} (@${profile.handle}) to Graph & Behavioral Heatmap.`
+    );
   };
 
   const handleRemoveEntity = (entityId: string) => {
@@ -421,15 +575,27 @@ export function App() {
       } else if (action.moduleId === 'dossier') {
         setRoutedDossierQuery(val);
       } else if (action.moduleId === 'sanctions') {
-        setWorkspaceCase((prev) => ({
-          ...prev,
-          sanctionsQuery: {
-            ...prev.sanctionsQuery,
-            targetName: val,
-          },
-        }));
+        if (action.subMode === 'crypto') {
+          setRoutedCryptoWallet(val);
+        } else {
+          setWorkspaceCase((prev) => ({
+            ...prev,
+            sanctionsQuery: {
+              ...prev.sanctionsQuery,
+              targetName: val,
+            },
+          }));
+        }
       } else if (action.moduleId === 'forensics') {
         setRoutedWaybackUrl(val);
+      } else if (action.moduleId === 'webhunter') {
+        setPendingWebHunterAction({
+          targetValue: val,
+          subMode: action.subMode,
+          nonce: Date.now(),
+        });
+      } else if (action.moduleId === 'investigate') {
+        setRoutedInvestigatePayload({ target: val });
       } else if (action.moduleId === 'identity') {
         if (action.subMode === 'email' || (val.includes('@') && val.includes('.'))) {
           setRoutedIdentityPayload({ tab: 'email', value: val });
@@ -449,6 +615,19 @@ export function App() {
       setToast(`${action.label}: ${val}`);
     },
     [setWorkspaceCase]
+  );
+
+  const handlePivotToModule = useCallback(
+    (moduleId: ModuleId, targetValue: string, subMode?: string) => {
+      handleRouteSmartClue({
+        id: `pivot-${moduleId}-${Date.now()}`,
+        label: `Pivot → ${moduleId}`,
+        moduleId,
+        targetValue,
+        subMode,
+      });
+    },
+    [handleRouteSmartClue]
   );
 
   const handleExportSignedDossier = () => {
@@ -600,6 +779,8 @@ export function App() {
               <IdentitySweepModule
                 activeCase={workspaceCase}
                 onAppendLedger={handleAppendLedger}
+                onCommitProfile={handleCommitEnrichedProfile}
+                onPivotToModule={handlePivotToModule}
                 initialSubMode={routedIdentityPayload?.tab}
                 initialValue={routedIdentityPayload?.value}
                 onRouteSmartClue={handleRouteSmartClue}
@@ -610,9 +791,14 @@ export function App() {
               <InvestigationRunModule
                 activeCase={workspaceCase}
                 onAddInfraRecord={handleAddInfraRecord}
+                onAddEntities={handleAddEntitiesBatch}
+                onMergeEntities={handleMergeEntities}
                 onAppendLedger={handleAppendLedger}
+                initialTarget={routedInvestigatePayload?.target}
+                initialKind={routedInvestigatePayload?.kind}
                 onRouteSmartClue={handleRouteSmartClue}
                 onSelectModule={setActiveModule}
+                onPivotToModule={handlePivotToModule}
                 onAcceptAutoLink={handleAcceptAutoLink}
                 onDismissAutoLink={handleDismissAutoLink}
               />
@@ -631,6 +817,7 @@ export function App() {
                   }))
                 }
                 onAppendLedger={handleAppendLedger}
+                initialWallet={routedCryptoWallet}
                 onExportMarkdown={handleExportSignedDossier}
                 onPivot={handleRouteSmartClue}
               />
@@ -653,6 +840,32 @@ export function App() {
                   }))
                 }
                 onAppendLedger={handleAppendLedger}
+              />
+            )}
+
+            {activeModule === 'webhunter' && (
+              <WebHunterModule
+                activeCase={workspaceCase}
+                pendingAction={pendingWebHunterAction}
+                onCommitCollectedPage={handleCommitCollectedPage}
+                onCommitLedger={handleAppendLedger}
+                onPivotToModule={handlePivotToModule}
+              />
+            )}
+
+            {activeModule === 'timeline' && (
+              <TimelineHeatmapModule
+                activeCase={workspaceCase}
+                onPivotToModule={handlePivotToModule}
+              />
+            )}
+
+            {activeModule === 'copilot' && (
+              <CopilotVaultModule
+                activeCase={workspaceCase}
+                onAddEntity={handleAddEntity}
+                onCommitLedger={handleAppendLedger}
+                onPivotToModule={handlePivotToModule}
               />
             )}
           </div>

@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-export type ButtonVariant = 'primary' | 'solid' | 'ghost' | 'chip' | 'danger';
+export type ButtonVariant = 'primary' | 'solid' | 'secondary' | 'ghost' | 'chip' | 'danger';
 type ButtonSize = 'sm' | 'md';
 
 const BASE =
@@ -10,6 +10,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   /* The one loud element on the bench: the region's main action. */
   primary: 'bg-accent text-on-accent hover:bg-accent-strong',
   solid: 'border border-line bg-well text-ink hover:border-line-strong',
+  secondary: 'border border-line bg-well text-ink hover:border-line-strong',
   ghost: 'border border-transparent text-ink-2 hover:text-ink hover:bg-well',
   chip:
     'border border-line bg-well px-2.5 py-1 font-mono text-[11px] text-ink-2 hover:border-accent hover:text-ink',

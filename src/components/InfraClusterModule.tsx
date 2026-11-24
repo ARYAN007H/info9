@@ -15,9 +15,12 @@ import type {
   DnsTwistPermutation,
   InfraDomainRecord,
   InvestigationCase,
+  ModuleId,
+  ProvenanceMeta,
   SubdomainProbeResult,
 } from '../types/osint';
 import ProvenanceBadge from './ProvenanceBadge';
+import { InfraAttributionPanel } from './InfraAttributionPanel';
 import {
   clusterInfrastructureDomains,
   generateDnsTwistPermutations,
@@ -46,10 +49,11 @@ interface InfraClusterModuleProps {
   activeCase: InvestigationCase;
   onAddInfraRecord: (record: InfraDomainRecord) => void;
   onAppendLedger: (entry: {
-    module: 'infra';
+    module: ModuleId;
     targetLabel: string;
     findingSummary: string;
     sourceUrl: string;
+    provenance?: ProvenanceMeta;
   }) => void;
   initialDomain?: string;
   onRouteSmartClue?: (action: SmartRouteAction) => void;
@@ -628,6 +632,16 @@ export const InfraClusterModule: React.FC<InfraClusterModuleProps> = ({
               )}
             </Panel>
           </div>
+
+          <InfraAttributionPanel
+            domain={selectedRecord.domain}
+            ipHint={selectedRecord.aRecords[0]}
+            onScanDomain={(dom) => {
+              setDomainInput(dom);
+              void runDomainScan(dom);
+            }}
+            onCommitLedger={(entry) => onAppendLedger(entry)}
+          />
         </div>
       )}
     </div>

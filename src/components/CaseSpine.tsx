@@ -3,6 +3,7 @@ import { Download, FolderPlus, Upload } from 'lucide-react';
 import type { InvestigationCase, ModuleId } from '../types/osint';
 import { MODULE_CATALOG, MODULE_ORDER } from './moduleCatalog';
 import { formatFetchedAt } from '../utils/provenance';
+import { buildUnifiedTimeline } from '../utils/timelineEngine';
 import { Button, SelectField, TextField } from './ui';
 
 interface CaseSpineProps {
@@ -38,6 +39,11 @@ function moduleCounts(activeCase: InvestigationCase): Record<ModuleId, number> {
       .length,
     acoustic: activeCase.evidenceLedger.filter(
       (entry) => entry.module === 'acoustic'
+    ).length,
+    webhunter: activeCase.collectedPages?.length ?? 0,
+    timeline: buildUnifiedTimeline(activeCase).length,
+    copilot: activeCase.evidenceLedger.filter(
+      (entry) => entry.module === 'copilot'
     ).length,
   };
 }
@@ -194,7 +200,7 @@ export function CaseSpine({
 
       <nav
         aria-label="Investigation modules"
-        className="flex gap-1 overflow-x-auto px-2 py-2 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:px-0 lg:py-2.5"
+        className="flex gap-1 overflow-x-auto px-2 py-2 lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:overflow-x-hidden lg:px-0 lg:py-2"
       >
         {MODULE_ORDER.map((id) => {
           const mod = MODULE_CATALOG[id];

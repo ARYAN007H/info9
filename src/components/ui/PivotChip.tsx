@@ -4,21 +4,24 @@ import type { ModuleId } from '../../types/osint';
 import { classifyUniversalIntake, type SmartRouteAction } from '../../utils/smartIntake';
 
 export interface PivotChipProps {
-  value: string;
+  value?: string;
   label?: string;
+  hint?: string;
+  onClick?: () => void;
   onSelectAction?: (action: SmartRouteAction) => void;
   onSelectModule?: (moduleId: ModuleId, targetValue: string) => void;
   className?: string;
 }
 
 /**
- * Click-to-Pivot context chip: wraps any emitted data value (IP, domain,
- * coordinates, entity name, handle, email) with a 1-click popover menu
- * offering instant cross-module pivots.
+ * Click-to-Pivot context chip: supports either direct 1-click pivots (onClick)
+ * or an auto-classified popover menu for emitted data values.
  */
 export const PivotChip: React.FC<PivotChipProps> = ({
   value,
   label,
+  hint,
+  onClick,
   onSelectAction,
   onSelectModule,
   className = '',
@@ -40,10 +43,31 @@ export const PivotChip: React.FC<PivotChipProps> = ({
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [open]);
 
-  const classified = classifyUniversalIntake(value);
+  if (onClick) {
+    const display = label ?? value ?? '';
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={hint ? `${hint}: ${display}` : `Pivot on ${display}`}
+        className={`group inline-flex items-center gap-1 rounded border border-line bg-well px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-ink transition-colors hover:border-accent/60 hover:text-accent ${className}`}
+      >
+        <span className="max-w-[220px] truncate">{display}</span>
+        {hint && (
+          <span className="text-[9px] font-sans font-medium uppercase tracking-wide text-ink-3 group-hover:text-accent">
+            · {hint}
+          </span>
+        )}
+        <ArrowUpRight className="h-3 w-3 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-accent" />
+      </button>
+    );
+  }
+
+  const rawValue = (value ?? label ?? '').trim();
+  const classified = classifyUniversalIntake(rawValue);
   const actions = classified?.recommendedActions ?? [];
 
-  if (!value.trim() || actions.length === 0) {
+  if (!rawValue || actions.length === 0) {
     return (
       <span className={`font-mono text-xs tabular-nums text-ink ${className}`}>
         {label ?? value}
@@ -56,10 +80,10 @@ export const PivotChip: React.FC<PivotChipProps> = ({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        title={`Pivot on ${value}`}
+        title={`Pivot on ${rawValue}`}
         className="group inline-flex items-center gap-1 rounded border border-line bg-well px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-ink transition-colors hover:border-accent/60 hover:text-accent"
       >
-        <span className="truncate max-w-[220px]">{label ?? value}</span>
+        <span className="truncate max-w-[220px]">{label ?? rawValue}</span>
         <ArrowUpRight className="h-3 w-3 shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-accent" />
       </button>
 
