@@ -341,51 +341,81 @@ async function startServer() {
   });
 
   // ---- Live OFAC SDN screening list (free public data, zero key) ----
-  const OFAC_SDN_URL = 'https://www.treasury.gov/ofac/downloads/sdn.csv';
-  let ofacCache: {
+  const OFAC_SDN_URLS = [
+    'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV',
+    'https://www.treasury.gov/ofac/downloads/sdn.csv',
+  ];
+  type OfacCacheEntry = {
     candidates: ReturnType<typeof toSanctionsCandidates>;
     rawCount: number;
     fetchedAt: string;
-  } | null = null;
-  app.get('/api/osint/sanctions/ofac', async (_req, res) => {
-    if (!ofacCache) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
-        const upstream = await fetch(OFAC_SDN_URL, {
-          signal: controller.signal,
-          headers: { 'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)' },
-        });
-        clearTimeout(timeout);
-        if (!upstream.ok) {
-          res.status(502).json({ error: `OFAC SDN download returned HTTP ${upstream.status}` });
-          return;
+    sourceUrl: string;
+  };
+  let ofacCache: OfacCacheEntry | null = null;
+  let ofacInflight: Promise<OfacCacheEntry> | null = null;
+
+  async function getOrLoadOfacCandidates(timeoutMs = 25000): Promise<OfacCacheEntry> {
+    if (ofacCache) return ofacCache;
+    if (!ofacInflight) {
+      ofacInflight = (async () => {
+        let lastErr: unknown = new Error('OFAC SDN download failed');
+        for (const url of OFAC_SDN_URLS) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const upstream = await fetch(url, {
+              signal: controller.signal,
+              headers: { 'User-Agent': 'info9/0.1 (+https://github.com/ARYAN007H/info9)' },
+            });
+            if (!upstream.ok) {
+              throw new Error(`OFAC SDN download returned HTTP ${upstream.status}`);
+            }
+            const text = await upstream.text();
+            const records = parseOfacSdnCsv(text);
+            if (records.length === 0) {
+              throw new Error('OFAC SDN CSV parsed to zero records');
+            }
+            ofacCache = {
+              candidates: toSanctionsCandidates(records, 20000),
+              rawCount: records.length,
+              fetchedAt: new Date().toISOString(),
+              sourceUrl: url,
+            };
+            return ofacCache;
+          } catch (err) {
+            lastErr = err;
+          } finally {
+            clearTimeout(timer);
+          }
         }
-        const text = await upstream.text();
-        const records = parseOfacSdnCsv(text);
-        if (records.length === 0) {
-          res.status(502).json({ error: 'OFAC SDN CSV parsed to zero records' });
-          return;
-        }
-        ofacCache = {
-          candidates: toSanctionsCandidates(records, 20000),
-          rawCount: records.length,
-          fetchedAt: new Date().toISOString(),
-        };
-      } catch (err) {
-        res.status(502).json({
-          error: `Could not load OFAC SDN list: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        return;
-      }
+        throw lastErr;
+      })().finally(() => {
+        ofacInflight = null;
+      });
     }
-    res.json({
-      candidates: ofacCache.candidates,
-      count: ofacCache.candidates.length,
-      rawCount: ofacCache.rawCount,
-      fetchedAt: ofacCache.fetchedAt,
-      sourceUrl: OFAC_SDN_URL,
-    });
+    return ofacInflight;
+  }
+
+  // Warm the live OFAC SDN corpus in the background so Watchlist, Crypto, and Maritime checks are instant.
+  void getOrLoadOfacCandidates(30000).catch(() => {
+    // Will retry on demand if startup warm-up failed.
+  });
+
+  app.get('/api/osint/sanctions/ofac', async (_req, res) => {
+    try {
+      const loaded = await getOrLoadOfacCandidates(60000);
+      res.json({
+        candidates: loaded.candidates,
+        count: loaded.candidates.length,
+        rawCount: loaded.rawCount,
+        fetchedAt: loaded.fetchedAt,
+        sourceUrl: loaded.sourceUrl,
+      });
+    } catch (err) {
+      res.status(502).json({
+        error: `Could not load OFAC SDN list: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
   });
 
   // URLScan.io public search proxy (browser CORS blocked on some origins)
@@ -751,7 +781,7 @@ async function startServer() {
     }
   });
 
-  // Phase 2: Crypto Wallet Intelligence + OFAC SDN Cross-Check
+  // Phase 2: Crypto Wallet Intelligence + Live OFAC SDN Cross-Check
   app.get('/api/osint/crypto/wallet', async (req, res) => {
     const address = String(req.query.address || '').trim();
     if (!address) {
@@ -759,7 +789,8 @@ async function startServer() {
       return;
     }
     try {
-      const data = await lookupCryptoWallet(address, ofacCache?.candidates ?? []);
+      const ofacLoaded = await getOrLoadOfacCandidates(12000).catch(() => null);
+      const data = await lookupCryptoWallet(address, ofacLoaded?.candidates ?? []);
       res.json(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -767,7 +798,7 @@ async function startServer() {
     }
   });
 
-  // Phase 2: Maritime Vessel Lookup + OFAC SDN Vessel Cross-Check
+  // Phase 2: Maritime Vessel Lookup + Live OFAC SDN Vessel Cross-Check
   app.get('/api/osint/maritime/vessel', async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (!q || q.length > 140) {
@@ -775,7 +806,8 @@ async function startServer() {
       return;
     }
     try {
-      const data = await lookupMaritimeVessel(q, ofacCache?.candidates ?? []);
+      const ofacLoaded = await getOrLoadOfacCandidates(12000).catch(() => null);
+      const data = await lookupMaritimeVessel(q, ofacLoaded?.candidates ?? []);
       res.json(data);
     } catch (err) {
       res.status(502).json({
@@ -830,7 +862,7 @@ async function startServer() {
     }
   });
 
-  // Phase 3: Evidence-Grounded AI Analyst Copilot (Server-side @google/genai)
+  // Phase 3: Evidence-Grounded AI Analyst Copilot (Gemini when GEMINI_API_KEY is set, zero-key Local Evidence Engine otherwise)
   app.post('/api/osint/copilot/analyze', async (req, res) => {
     const mode = String(req.body?.mode || 'briefing_qa') as CopilotMode;
     const caseData = req.body?.caseData as InvestigationCase | undefined;
@@ -843,13 +875,6 @@ async function startServer() {
     }
     if (!['ner_extract', 'ach_matrix', 'next_pivots', 'briefing_qa'].includes(mode)) {
       res.status(400).json({ error: 'Invalid copilot analysis mode' });
-      return;
-    }
-    if (!process.env.GEMINI_API_KEY?.trim()) {
-      res.status(501).json({
-        error:
-          'GEMINI_API_KEY is not configured in the server environment. Configure GEMINI_API_KEY to run Evidence-Grounded AI Copilot analyses. All zero-key collection, timeline, graph, and SQLite features work without it.',
-      });
       return;
     }
 
@@ -935,6 +960,20 @@ async function startServer() {
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Stats failed' });
     }
+  });
+
+  app.post('/api/db/reset', (_req, res) => {
+    try {
+      db.clearAllData();
+      res.json({ ok: true, stats: db.getStats() });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Reset failed' });
+    }
+  });
+
+  // Catch-all for unknown /api/* routes so dev/prod never returns HTML 200 on missing API paths.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'API endpoint not found' });
   });
 
   if (process.env.NODE_ENV !== 'production') {

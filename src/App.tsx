@@ -37,6 +37,7 @@ import { AcousticDopplerModule } from './components/AcousticDopplerModule';
 import { WebHunterModule } from './components/WebHunterModule';
 import { TimelineHeatmapModule } from './components/TimelineHeatmapModule';
 import { CopilotVaultModule } from './components/CopilotVaultModule';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ReportBuilderModal } from './components/ReportBuilderModal';
 
@@ -154,9 +155,13 @@ export function App() {
   const [routedCryptoWallet, setRoutedCryptoWallet] = useState<
     string | undefined
   >(undefined);
+  const [routedFaceHandle, setRoutedFaceHandle] = useState<
+    string | undefined
+  >(undefined);
   const [routedInvestigatePayload, setRoutedInvestigatePayload] = useState<{
     target: string;
     kind?: EntityKind;
+    spiderKind?: 'domain' | 'ip' | 'email' | 'username' | 'entity-name';
   } | null>(null);
 
   useEffect(() => {
@@ -471,6 +476,7 @@ export function App() {
   const handleResetWorkspace = () => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(MULTI_CASES_KEY);
+    void fetch('/api/db/reset', { method: 'POST' }).catch(() => {});
     setCaseStore({
       activeCaseId: DEFAULT_WORKSPACE_CASE.id,
       cases: [DEFAULT_WORKSPACE_CASE],
@@ -575,7 +581,11 @@ export function App() {
       } else if (action.moduleId === 'dossier') {
         setRoutedDossierQuery(val);
       } else if (action.moduleId === 'sanctions') {
-        if (action.subMode === 'crypto') {
+        const isWalletAddr =
+          /^(0x[a-fA-F0-9]{40}|bc1[a-z0-9]{25,59}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|T[A-Za-z1-9]{33})$/.test(
+            val
+          );
+        if (action.subMode === 'crypto' || isWalletAddr) {
           setRoutedCryptoWallet(val);
         } else {
           setWorkspaceCase((prev) => ({
@@ -595,7 +605,33 @@ export function App() {
           nonce: Date.now(),
         });
       } else if (action.moduleId === 'investigate') {
-        setRoutedInvestigatePayload({ target: val });
+        const inferredSpiderKind: 'domain' | 'ip' | 'email' | 'username' | 'entity-name' =
+          action.subMode === 'domain' ||
+          action.subMode === 'ip' ||
+          action.subMode === 'email' ||
+          action.subMode === 'username' ||
+          action.subMode === 'entity-name'
+            ? action.subMode
+            : /^\d{1,3}(\.\d{1,3}){3}$/.test(val)
+            ? 'ip'
+            : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)
+            ? 'email'
+            : val.startsWith('@')
+            ? 'username'
+            : /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(val)
+            ? 'domain'
+            : 'entity-name';
+        const chainKind: EntityKind =
+          inferredSpiderKind === 'domain' || inferredSpiderKind === 'ip'
+            ? inferredSpiderKind
+            : 'entity-name';
+        setRoutedInvestigatePayload({
+          target: val.replace(/^@/, ''),
+          kind: chainKind,
+          spiderKind: inferredSpiderKind,
+        });
+      } else if (action.moduleId === 'face') {
+        setRoutedFaceHandle(val.replace(/^@/, ''));
       } else if (action.moduleId === 'identity') {
         if (action.subMode === 'email' || (val.includes('@') && val.includes('.'))) {
           setRoutedIdentityPayload({ tab: 'email', value: val });
@@ -718,6 +754,7 @@ export function App() {
             key={activeModule}
             className="panel-enter mx-auto max-w-[1500px] space-y-4 px-4 py-5 sm:px-5"
           >
+            <ErrorBoundary resetKey={activeModule}>
             {activeModule === 'geolocation' && (
               <GeolocationModule
                 activeCase={workspaceCase}
@@ -796,6 +833,7 @@ export function App() {
                 onAppendLedger={handleAppendLedger}
                 initialTarget={routedInvestigatePayload?.target}
                 initialKind={routedInvestigatePayload?.kind}
+                initialSpiderKind={routedInvestigatePayload?.spiderKind}
                 onRouteSmartClue={handleRouteSmartClue}
                 onSelectModule={setActiveModule}
                 onPivotToModule={handlePivotToModule}
@@ -827,6 +865,7 @@ export function App() {
               <FaceReconModule
                 activeCase={workspaceCase}
                 onAppendLedger={handleAppendLedger}
+                initialHandle={routedFaceHandle}
               />
             )}
 
@@ -868,6 +907,7 @@ export function App() {
                 onPivotToModule={handlePivotToModule}
               />
             )}
+            </ErrorBoundary>
           </div>
         </main>
       </div>
@@ -915,7 +955,7 @@ export function App() {
       {toast && (
         <div
           role="status"
-          className="panel-enter fixed right-4 top-16 z-40 flex max-w-md items-center gap-3 rounded-md border border-line bg-panel px-3.5 py-2.5 text-xs text-ink shadow-xl"
+          className="panel-enter fixed bottom-14 right-4 z-40 flex max-w-md items-center gap-3 rounded-md border border-line-strong bg-panel px-3.5 py-2.5 text-xs text-ink shadow-xl"
         >
           <span
             aria-hidden="true"

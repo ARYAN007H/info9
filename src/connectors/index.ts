@@ -48,10 +48,11 @@ async function fetchJsonCached(
   const hit = JSON_CACHE.get(key);
   if (hit !== undefined) return hit;
 
+  const signal = init?.signal ?? AbortSignal.timeout(8000);
   let res: Response;
   if (proxyPath && typeof window !== 'undefined') {
     try {
-      const viaProxy = await fetch(proxyPath);
+      const viaProxy = await fetch(proxyPath, { signal });
       if (viaProxy.ok) {
         const json = (await viaProxy.json()) as unknown;
         JSON_CACHE.set(key, json);
@@ -62,11 +63,13 @@ async function fetchJsonCached(
     }
     res = await fetch(url, {
       ...init,
+      signal,
       headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
     });
   } else {
     res = await fetch(url, {
       ...init,
+      signal,
       headers: {
         'User-Agent': INFO9_USER_AGENT,
         Accept: 'application/json',

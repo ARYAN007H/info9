@@ -58,6 +58,20 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       (d.asnOrg ?? '').toLowerCase().includes(q)
   );
 
+  const matchingPages = (activeCase.collectedPages ?? []).filter(
+    (p) =>
+      p.title.toLowerCase().includes(q) ||
+      p.url.toLowerCase().includes(q) ||
+      p.domain.toLowerCase().includes(q)
+  );
+
+  const matchingProfiles = (activeCase.enrichedProfiles ?? []).filter(
+    (p) =>
+      p.handle.toLowerCase().includes(q) ||
+      p.platform.toLowerCase().includes(q) ||
+      (p.displayName ?? '').toLowerCase().includes(q)
+  );
+
   const sectionLabel = 'mb-2 text-[11px] font-semibold text-ink-3';
   const kbd =
     'shrink-0 rounded border border-line bg-app px-1.5 py-0.5 font-mono text-[10px] text-ink-3';
@@ -170,7 +184,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
           )}
 
           <div>
-            <div className={sectionLabel}>All 9 Investigation Instruments</div>
+            <div className={sectionLabel}>
+              All {MODULE_ORDER.length} Investigation Instruments
+            </div>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               {MODULE_ORDER.map((id) => {
                 const mod = MODULE_CATALOG[id];
@@ -197,7 +213,10 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             </div>
           </div>
 
-          {(matchingEntities.length > 0 || matchingDomains.length > 0) && (
+          {(matchingEntities.length > 0 ||
+            matchingDomains.length > 0 ||
+            matchingPages.length > 0 ||
+            matchingProfiles.length > 0) && (
             <div>
               <div className={sectionLabel}>Saved in your workspace</div>
               <div className="space-y-1.5">
@@ -230,6 +249,40 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                     <span className="text-ink">{dom.domain}</span>
                     <span className="text-[11px] text-ink-3">
                       {dom.aRecords[0]}
+                    </span>
+                  </button>
+                ))}
+                {matchingPages.slice(0, 3).map((pg) => (
+                  <button
+                    key={pg.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectModule('webhunter');
+                      onClose();
+                    }}
+                    className="flex w-full items-center justify-between gap-2 rounded border border-line bg-well p-2 text-left transition-colors hover:border-accent/60"
+                  >
+                    <span className="truncate font-medium text-ink">{pg.title}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-ink-3">
+                      {pg.domain}
+                    </span>
+                  </button>
+                ))}
+                {matchingProfiles.slice(0, 3).map((prof) => (
+                  <button
+                    key={`${prof.platform}:${prof.handle}`}
+                    type="button"
+                    onClick={() => {
+                      onSelectModule('identity');
+                      onClose();
+                    }}
+                    className="flex w-full items-center justify-between gap-2 rounded border border-line bg-well p-2 text-left transition-colors hover:border-accent/60"
+                  >
+                    <span className="truncate font-medium text-ink">
+                      @{prof.handle} {prof.displayName ? `(${prof.displayName})` : ''}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-ink-3">
+                      {prof.platform}
                     </span>
                   </button>
                 ))}

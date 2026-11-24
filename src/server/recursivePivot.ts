@@ -7,6 +7,24 @@ import type { Info9Database } from './database';
 
 export type SpiderSeedKind = 'domain' | 'ip' | 'email' | 'username' | 'entity-name';
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+    }, ms);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export interface SpiderEntity {
   id: string;
   kind: SpiderSeedKind | 'asn' | 'url' | 'wallet';
@@ -291,93 +309,110 @@ export async function executeRecursivePivotSpider(
             const domainConn = connectorsById.get('domain-recon');
             const t0 = Date.now();
             let primaryIp: string | undefined;
-            if (domainConn) {
-              try {
-                const res = await domainConn.run(node.value);
+
+            const domainTask = domainConn
+              ? withTimeout(domainConn.run(node.value), 9000, 'domain-recon')
+                  .then((res) => {
+                    stepsCompleted++;
+                    const ipEmitted = res.emitted.find((e) => e.kind === 'ip');
+                    if (ipEmitted) {
+                      primaryIp = ipEmitted.value;
+                      const ipEnt = addEntity(
+                        'ip',
+                        ipEmitted.value,
+                        `${ipEmitted.value} (${ipEmitted.label || 'IPv4'})`,
+                        hop,
+                        res.provenance.source
+                      );
+                      addEdge(node.id, ipEnt.id, 'A record', 'Cloudflare DoH');
+                      nextFrontier.push(ipEnt);
+                    }
+                    emit({
+                      type: 'step_result',
+                      jobId,
+                      hop,
+                      message: `Passive domain recon for ${node.value}`,
+                      step: {
+                        connector: 'domain-recon',
+                        target: node.value,
+                        status: 'ok',
+                        durationMs: Date.now() - t0,
+                        summary: res.emitted.map((e) => `${e.kind}:${e.value}`).join(' · ') || 'Resolved',
+                      },
+                    });
+                  })
+                  .catch((err) => {
+                    stepsCompleted++;
+                    emit({
+                      type: 'step_result',
+                      jobId,
+                      hop,
+                      message: `Domain recon failed for ${node.value}`,
+                      step: {
+                        connector: 'domain-recon',
+                        target: node.value,
+                        status: 'error',
+                        durationMs: Date.now() - t0,
+                        summary: err instanceof Error ? err.message : 'failed',
+                      },
+                    });
+                  })
+              : Promise.resolve();
+
+            const t1 = Date.now();
+            const attrTask = withTimeout(runInfraAttribution(node.value), 9000, 'infra-attribution')
+              .then((attr) => {
                 stepsCompleted++;
-                const ipEmitted = res.emitted.find((e) => e.kind === 'ip');
-                if (ipEmitted) {
-                  primaryIp = ipEmitted.value;
-                  const ipEnt = addEntity(
-                    'ip',
-                    ipEmitted.value,
-                    `${ipEmitted.value} (${ipEmitted.label || 'IPv4'})`,
-                    hop,
-                    res.provenance.source
-                  );
-                  addEdge(node.id, ipEnt.id, 'A record', 'Cloudflare DoH');
-                  nextFrontier.push(ipEnt);
+                for (const co of attr.reverseIpDomains.slice(0, 3)) {
+                  if (co.domain !== node.value) {
+                    const coEnt = addEntity(
+                      'domain',
+                      co.domain,
+                      co.domain,
+                      hop,
+                      'URLScan Reverse-IP'
+                    );
+                    addEdge(
+                      primaryIp ? normKey('ip', primaryIp) : node.id,
+                      coEnt.id,
+                      'co-hosted domain',
+                      'URLScan.io'
+                    );
+                    if (hop < depth) nextFrontier.push(coEnt);
+                  }
                 }
                 emit({
                   type: 'step_result',
                   jobId,
                   hop,
-                  message: `Passive domain recon for ${node.value}`,
+                  message: `Attribution scan for ${node.value}`,
                   step: {
-                    connector: 'domain-recon',
+                    connector: 'infra-attribution',
                     target: node.value,
                     status: 'ok',
-                    durationMs: Date.now() - t0,
-                    summary: res.emitted.map((e) => `${e.kind}:${e.value}`).join(' · ') || 'Resolved',
+                    durationMs: Date.now() - t1,
+                    summary: `${attr.reverseIpDomains.length} co-hosted · OTX pulses: ${attr.otx.pulseCount} · Favicon hash: ${attr.webFingerprint?.faviconHash ?? 'n/a'}`,
                   },
                 });
-              } catch (err) {
+              })
+              .catch((err) => {
                 stepsCompleted++;
                 emit({
                   type: 'step_result',
                   jobId,
                   hop,
-                  message: `Domain recon failed for ${node.value}`,
+                  message: `Attribution scan failed for ${node.value}`,
                   step: {
-                    connector: 'domain-recon',
+                    connector: 'infra-attribution',
                     target: node.value,
                     status: 'error',
-                    durationMs: Date.now() - t0,
+                    durationMs: Date.now() - t1,
                     summary: err instanceof Error ? err.message : 'failed',
                   },
                 });
-              }
-            }
-
-            // Attribution & Reverse-IP co-hosted domains
-            const t1 = Date.now();
-            try {
-              const attr = await runInfraAttribution(node.value, primaryIp);
-              stepsCompleted++;
-              for (const co of attr.reverseIpDomains.slice(0, 3)) {
-                if (co.domain !== node.value) {
-                  const coEnt = addEntity(
-                    'domain',
-                    co.domain,
-                    co.domain,
-                    hop,
-                    'URLScan Reverse-IP'
-                  );
-                  addEdge(
-                    primaryIp ? normKey('ip', primaryIp) : node.id,
-                    coEnt.id,
-                    'co-hosted domain',
-                    'URLScan.io'
-                  );
-                  if (hop < depth) nextFrontier.push(coEnt);
-                }
-              }
-              emit({
-                type: 'step_result',
-                jobId,
-                hop,
-                message: `Attribution scan for ${node.value}`,
-                step: {
-                  connector: 'infra-attribution',
-                  target: node.value,
-                  status: 'ok',
-                  durationMs: Date.now() - t1,
-                  summary: `${attr.reverseIpDomains.length} co-hosted · OTX pulses: ${attr.otx.pulseCount} · Favicon hash: ${attr.webFingerprint?.faviconHash ?? 'n/a'}`,
-                },
               });
-            } catch {
-              stepsCompleted++;
-            }
+
+            await Promise.all([domainTask, attrTask]);
           } else if (node.kind === 'ip') {
             const ipSteps = ['ip-geolocation', 'shodan-internetdb', 'ripestat-bgp'];
             await Promise.all(

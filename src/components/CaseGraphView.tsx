@@ -77,6 +77,23 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
   // Entity merge / deduplication state
   const [mergePrimaryId, setMergePrimaryId] = useState<string>('');
   const [mergeDupId, setMergeDupId] = useState<string>('');
+  const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() =>
+    typeof document !== 'undefined'
+      ? document.documentElement.classList.contains('dark')
+      : true
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const obs = new MutationObserver(() => {
+      setIsDarkTheme(document.documentElement.classList.contains('dark'));
+    });
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => obs.disconnect();
+  }, []);
 
   const graph = useMemo(
     () => buildCaseInvestigationGraph(activeCase, 880, 520),
@@ -146,18 +163,20 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
           style: {
             'background-color': 'data(fill)',
             label: 'data(label)',
-            color: '#e5e7eb',
+            color: isDarkTheme ? '#e9edee' : '#1b2224',
             'font-family': 'Spline Sans Mono, monospace',
             'font-size': 10,
             'text-valign': 'bottom',
             'text-margin-y': 5,
-            'text-background-color': '#0e1113',
-            'text-background-opacity': 0.85,
+            'text-max-width': '130px',
+            'text-wrap': 'ellipsis',
+            'text-background-color': isDarkTheme ? '#0e1113' : '#edeeec',
+            'text-background-opacity': 0.88,
             'text-background-padding': '2px',
             width: 'data(size)',
             height: 'data(size)',
             'border-width': 1.5,
-            'border-color': '#1f2428',
+            'border-color': isDarkTheme ? '#272e33' : '#bfc5c1',
           },
         },
         {
@@ -165,7 +184,7 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
           style: {
             shape: 'hexagon',
             'border-width': 2.5,
-            'border-color': '#ffffff',
+            'border-color': isDarkTheme ? '#ffffff' : '#1b2224',
             'font-weight': 'bold',
           },
         },
@@ -180,24 +199,24 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
           selector: 'node:selected',
           style: {
             'border-width': 3,
-            'border-color': '#ffffff',
+            'border-color': isDarkTheme ? '#ffffff' : '#1b2224',
           },
         },
         {
           selector: 'edge',
           style: {
             width: 1.5,
-            'line-color': '#4b5563',
-            'target-arrow-color': '#4b5563',
+            'line-color': isDarkTheme ? '#4b5563' : '#9ca3af',
+            'target-arrow-color': isDarkTheme ? '#4b5563' : '#9ca3af',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             label: 'data(label)',
             'font-family': 'Spline Sans Mono, monospace',
             'font-size': 8,
-            color: '#9ca3af',
+            color: isDarkTheme ? '#9faab2' : '#525d61',
             'text-rotation': 'autorotate',
-            'text-background-color': '#0e1113',
-            'text-background-opacity': 0.75,
+            'text-background-color': isDarkTheme ? '#0e1113' : '#edeeec',
+            'text-background-opacity': 0.8,
             'text-background-padding': '1px',
           },
         },
@@ -270,7 +289,7 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [graph, layoutMode, colorByCommunity, communities, shortestPath]);
+  }, [graph, layoutMode, colorByCommunity, communities, shortestPath, isDarkTheme]);
 
   const handleMerge = () => {
     if (!onMergeEntities || !mergePrimaryId || !mergeDupId || mergePrimaryId === mergeDupId) {
@@ -283,7 +302,7 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
 
   return (
     <Panel
-      title="Interactive Force-Directed Investigation Link Graph (Cytoscape.js)"
+      title="Case Link Graph"
       actions={
         <div className="flex flex-wrap items-center gap-1.5">
           {(['cose', 'concentric', 'breadthfirst'] as LayoutMode[]).map((m) => (
@@ -365,11 +384,18 @@ export const CaseGraphView: React.FC<CaseGraphViewProps> = ({
 
         {/* Main Interactive Canvas + Node Transform Inspector */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-3">
-          <div
-            ref={containerRef}
-            data-testid="cytoscape-graph-canvas"
-            className="h-[460px] w-full rounded-[2px] border border-rule bg-[#0b0e10] relative"
-          />
+          <div className="relative">
+            <div
+              ref={containerRef}
+              data-testid="cytoscape-graph-canvas"
+              className="h-[460px] w-full rounded-[2px] border border-rule bg-app relative"
+            />
+            {graph.stats.totalNodes <= 2 && (
+              <div className="pointer-events-none absolute bottom-3 left-3 rounded border border-line bg-panel/90 px-2.5 py-1.5 text-[11px] text-ink-2">
+                Add entities via Recursive Spider, Web Hunter, or Dossier to expand the graph.
+              </div>
+            )}
+          </div>
 
           <div className="space-y-3">
             {/* Selected Node & Maltego-Style Run Transform Menu */}

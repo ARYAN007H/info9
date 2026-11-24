@@ -39,19 +39,21 @@ async function proxyAwareFetch(
   absoluteUrl: string,
   init?: RequestInit
 ): Promise<Response> {
+  const signal = init?.signal ?? AbortSignal.timeout(7000);
   if (typeof window === 'undefined') {
     return fetch(absoluteUrl, {
       ...init,
+      signal,
       headers: { 'User-Agent': INFO9_USER_AGENT, ...(init?.headers ?? {}) },
     });
   }
   try {
-    const viaProxy = await fetch(pathAndQuery, init);
+    const viaProxy = await fetch(pathAndQuery, { ...init, signal });
     if (viaProxy.ok) return viaProxy;
   } catch {
     // Proxy unreachable — fall through to the direct browser call.
   }
-  return fetch(absoluteUrl, init);
+  return fetch(absoluteUrl, { ...init, signal });
 }
 
 /**
@@ -430,13 +432,14 @@ export async function queryShodanInternetDb(
   if (!ip || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return undefined;
   try {
     const res = await fetch(
-      `https://internetdb.shodan.io/${encodeURIComponent(ip)}`
+      `https://internetdb.shodan.io/${encodeURIComponent(ip)}`,
+      { signal: AbortSignal.timeout(6000) }
     );
     const data = res.ok
       ? await res.json()
-      : await fetch(`/api/osint/internetdb?ip=${encodeURIComponent(ip)}`).then(
-          (r) => (r.ok ? r.json() : null)
-        );
+      : await fetch(`/api/osint/internetdb?ip=${encodeURIComponent(ip)}`, {
+          signal: AbortSignal.timeout(6000),
+        }).then((r) => (r.ok ? r.json() : null));
     if (data && Array.isArray(data.ports)) {
       return {
         ip,
@@ -463,7 +466,8 @@ export async function queryRipeBgpOverview(
     const res = await fetch(
       `https://stat.ripe.net/data/prefix-overview/data.json?resource=${encodeURIComponent(
         ipOrAsn
-      )}`
+      )}`,
+      { signal: AbortSignal.timeout(6000) }
     );
     if (res.ok) {
       const json = await res.json();
@@ -532,14 +536,30 @@ export async function scanDomainInfrastructureLive(
   const dataGaps: string[] = [];
   const primaryIp = aRecords.find((r) => /^\d+\.\d+\.\d+\.\d+$/.test(r));
 
-  const [ipWhoResult, shodanData, ripeBgpData] = await Promise.all([
+  const [ipWhoResult, shodanData, ripeBgpData, rdapData, crtData] = await Promise.all([
     primaryIp
-      ? fetch(`https://ipwho.is/${encodeURIComponent(primaryIp)}`)
+      ? fetch(`https://ipwho.is/${encodeURIComponent(primaryIp)}`, {
+          signal: AbortSignal.timeout(6000),
+        })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       : Promise.resolve(null),
     primaryIp ? queryShodanInternetDb(primaryIp) : Promise.resolve(undefined),
     primaryIp ? queryRipeBgpOverview(primaryIp) : Promise.resolve(undefined),
+    proxyAwareFetch(
+      `/api/osint/rdap?domain=${encodeURIComponent(domain)}`,
+      `https://rdap.org/domain/${encodeURIComponent(domain)}`,
+      { signal: AbortSignal.timeout(6500) }
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+    proxyAwareFetch(
+      `/api/osint/crt?domain=${encodeURIComponent(domain)}`,
+      `https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`,
+      { signal: AbortSignal.timeout(6500) }
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
   ]);
 
   let asn: string | null = null;
@@ -560,37 +580,28 @@ export async function scanDomainInfrastructureLive(
 
   let registrar: string | null = null;
   let createdAt: string | null = null;
-  try {
-    const rdapRes = await proxyAwareFetch(
-      `/api/osint/rdap?domain=${encodeURIComponent(domain)}`,
-      `https://rdap.org/domain/${encodeURIComponent(domain)}`
+  if (rdapData) {
+    const events = Array.isArray(rdapData.events) ? rdapData.events : [];
+    const regEvent = events.find(
+      (e: { eventAction?: string }) =>
+        e.eventAction === 'registration' || e.eventAction === 'created'
     );
-    const rdapData = rdapRes.ok ? await rdapRes.json() : null;
-    if (rdapData) {
-      const events = Array.isArray(rdapData.events) ? rdapData.events : [];
-      const regEvent = events.find(
-        (e: { eventAction?: string }) =>
-          e.eventAction === 'registration' || e.eventAction === 'created'
-      );
-      if (regEvent?.eventDate) {
-        createdAt = String(regEvent.eventDate).slice(0, 10);
-      }
-      const entities = Array.isArray(rdapData.entities)
-        ? rdapData.entities
-        : [];
-      for (const ent of entities) {
-        const vcard = ent?.vcardArray?.[1];
-        if (Array.isArray(vcard)) {
-          const fnEntry = vcard.find((row: unknown[]) => row[0] === 'fn');
-          if (fnEntry && fnEntry[3]) {
-            registrar = String(fnEntry[3]);
-            break;
-          }
+    if (regEvent?.eventDate) {
+      createdAt = String(regEvent.eventDate).slice(0, 10);
+    }
+    const entities = Array.isArray(rdapData.entities)
+      ? rdapData.entities
+      : [];
+    for (const ent of entities) {
+      const vcard = ent?.vcardArray?.[1];
+      if (Array.isArray(vcard)) {
+        const fnEntry = vcard.find((row: unknown[]) => row[0] === 'fn');
+        if (fnEntry && fnEntry[3]) {
+          registrar = String(fnEntry[3]);
+          break;
         }
       }
     }
-  } catch {
-    // Keep nulls — recorded as data gaps below.
   }
   if (registrar === null || createdAt === null) {
     dataGaps.push('RDAP registration data unavailable');
@@ -598,33 +609,22 @@ export async function scanDomainInfrastructureLive(
 
   let tlsIssuer: string | null = null;
   const ctSubdomains = new Set<string>();
-  try {
-    const crtRes = await proxyAwareFetch(
-      `/api/osint/crt?domain=${encodeURIComponent(domain)}`,
-      `https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`
-    );
-    if (crtRes.ok) {
-      const crtData = await crtRes.json();
-      if (Array.isArray(crtData) && crtData.length > 0) {
-        const firstIssuer = String(crtData[0].issuer_name || '');
-        const cnMatch =
-          firstIssuer.match(/CN=([^,]+)/) || firstIssuer.match(/O=([^,]+)/);
-        if (cnMatch) {
-          tlsIssuer = cnMatch[1].trim();
-        }
-        for (const row of crtData) {
-          const names = String(row.name_value || '').split('\n');
-          for (const n of names) {
-            const clean = n.trim().toLowerCase();
-            if (clean && !clean.includes('*')) {
-              ctSubdomains.add(clean);
-            }
-          }
+  if (Array.isArray(crtData) && crtData.length > 0) {
+    const firstIssuer = String(crtData[0].issuer_name || '');
+    const cnMatch =
+      firstIssuer.match(/CN=([^,]+)/) || firstIssuer.match(/O=([^,]+)/);
+    if (cnMatch) {
+      tlsIssuer = cnMatch[1].trim();
+    }
+    for (const row of crtData) {
+      const names = String(row.name_value || '').split('\n');
+      for (const n of names) {
+        const clean = n.trim().toLowerCase();
+        if (clean && !clean.includes('*')) {
+          ctSubdomains.add(clean);
         }
       }
     }
-  } catch {
-    // Keep null/empty — recorded as data gaps below.
   }
   if (tlsIssuer === null) {
     dataGaps.push('crt.sh certificate data unavailable');

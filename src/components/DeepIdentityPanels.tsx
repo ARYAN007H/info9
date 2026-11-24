@@ -108,7 +108,7 @@ export const DeepProfileEnrichPanel: React.FC<
 
   return (
     <Panel
-      title="Deep Multi-Platform Profile Enricher (GitHub Commits · GitLab · Reddit · HN · Keybase · Bluesky · Mastodon · Dev.to)"
+      title="Profile Enricher (8 Platforms)"
       actions={
         <Button
           size="sm"
@@ -119,12 +119,12 @@ export const DeepProfileEnrichPanel: React.FC<
           {loading ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Enriching 8 APIs…
+              Enriching…
             </>
           ) : (
             <>
               <UserCheck className="w-3.5 h-3.5" />
-              Deep Enrich @{activeHandle.replace(/^@/, '') || 'handle'}
+              Enrich @{activeHandle.replace(/^@/, '') || 'handle'}
             </>
           )}
         </Button>
@@ -133,7 +133,7 @@ export const DeepProfileEnrichPanel: React.FC<
       <div className="space-y-3">
         {!ranFor && !error && (
           <p className="text-xs text-muted">
-            Automatically harvests real display names, bios, locations, linked websites, GitHub public commit emails, high-res avatars (1-click Face Recon pivot), and activity timestamps (feeds the 24×7 Behavioral Timezone Heatmap).
+            Pulls bios, locations, commit emails, avatars, and activity timestamps from GitHub, GitLab, Reddit, HN, Keybase, Bluesky, Mastodon &amp; Dev.to.
           </p>
         )}
         {error && <NoticeBanner tone="danger">{error}</NoticeBanner>}
@@ -162,9 +162,10 @@ export const DeepProfileEnrichPanel: React.FC<
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded-[2px] bg-surface border border-rule font-mono text-[9px] text-accent">
+                        <span className="font-mono text-[10px] font-semibold uppercase text-accent shrink-0">
                           {p.platform}
                         </span>
+                        <span className="text-muted">·</span>
                         <a
                           href={p.profileUrl}
                           target="_blank"
@@ -205,7 +206,7 @@ export const DeepProfileEnrichPanel: React.FC<
                     />
                   )}
                   {p.activityTimestampsUtc.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-[2px] bg-live/10 border border-live/40 font-mono text-[10px] text-live">
+                    <span className="font-mono text-[10px] text-live self-center">
                       {p.activityTimestampsUtc.length} activity timestamps
                     </span>
                   )}
@@ -280,7 +281,7 @@ export const DeepEmailIntelPanel: React.FC<
 
   return (
     <Panel
-      title="Deep Email Intelligence (ProtonMail PGP Creation · XposedOrNot Breaches · Gravatar JSON · GitHub Commits)"
+      title="Deep Email Intelligence"
       actions={
         <Button
           size="sm"
@@ -291,12 +292,12 @@ export const DeepEmailIntelPanel: React.FC<
           {loading ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Checking 7 Signals…
+              Checking…
             </>
           ) : (
             <>
               <Mail className="w-3.5 h-3.5" />
-              Run Deep Email Recon
+              Deep Email Check
             </>
           )}
         </Button>
@@ -305,7 +306,7 @@ export const DeepEmailIntelPanel: React.FC<
       <div className="space-y-3">
         {!data && !error && (
           <p className="text-xs text-muted">
-            Zero-key probe across ProtonMail HKP keyserver (exact key creation timestamp!), XposedOrNot public breach names, Gravatar full JSON profile &amp; linked accounts, OpenPGP keyserver, and GitHub commit-author attribution.
+            Checks ProtonMail HKP key creation date, XposedOrNot breaches, Gravatar JSON accounts, OpenPGP &amp; GitHub commits.
           </p>
         )}
         {error && <NoticeBanner tone="danger">{error}</NoticeBanner>}
@@ -434,7 +435,7 @@ export const EnhancedPhoneIntelPanel: React.FC<{
 
   return (
     <Panel
-      title="libphonenumber-js Validation, Multi-Format Web Dorks & Messaging Footprint"
+      title="Phone Parser & Web Dorks"
       actions={
         <div className="flex items-center gap-1.5">
           <FieldLabel htmlFor="ph-country" className="mb-0">

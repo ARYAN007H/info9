@@ -221,11 +221,11 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
           <div className="flex items-center gap-2">
             <span className="signage text-[10px] font-semibold text-accent">12</span>
             <h2 className="text-[15px] font-semibold tracking-tight text-ink">
-              Evidence-Grounded AI Copilot &amp; Local SQLite / Connector Vault
+              AI Copilot &amp; Case Vault
             </h2>
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            Server-side Gemini 4 analyst strictly bound to recorded case artifacts (verbatim-quote NER, ACH matrix, next-pivot planner) alongside SQLite persistence &amp; connector capability status.
+            Evidence-grounded analysis over recorded case artifacts, plus local SQLite and connector status.
           </p>
         </div>
         <SegmentedTabs
@@ -248,25 +248,25 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
                     {
                       id: 'ach_matrix',
                       title: 'ACH Matrix',
-                      desc: 'Analysis of Competing Hypotheses with supporting, contradicting & gap evidence',
+                      desc: 'Weigh competing hypotheses against recorded evidence',
                       icon: <Scale className="w-3.5 h-3.5" />,
                     },
                     {
                       id: 'ner_extract',
                       title: 'Verbatim-Quote NER',
-                      desc: 'Extract entities & links from case evidence or pasted filings with exact quotes',
+                      desc: 'Extract entities & links with exact source quotes',
                       icon: <FileText className="w-3.5 h-3.5" />,
                     },
                     {
                       id: 'next_pivots',
                       title: 'Next-Pivot Planner',
-                      desc: 'Highest-yield follow-up pivots mapped to info9 modules',
+                      desc: 'Highest-yield follow-up pivots by module',
                       icon: <GitBranch className="w-3.5 h-3.5" />,
                     },
                     {
                       id: 'briefing_qa',
                       title: 'Grounded Q&A',
-                      desc: 'Ask investigative questions strictly citing recorded case ledger & captures',
+                      desc: 'Ask case questions with strict artifact citations',
                       icon: <Brain className="w-3.5 h-3.5" />,
                     },
                   ] as const
@@ -384,15 +384,15 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
                             H{idx + 1}: {h.hypothesis}
                           </div>
                           <span
-                            className={`px-2 py-0.5 rounded-[2px] border font-mono text-[10px] ${
+                            className={`font-mono text-[10px] font-semibold uppercase ${
                               h.likelihood === 'HIGH'
-                                ? 'border-live/50 bg-live/10 text-live'
+                                ? 'text-live'
                                 : h.likelihood === 'MEDIUM'
-                                ? 'border-derived/50 bg-derived/10 text-derived'
-                                : 'border-rule bg-surface text-muted'
+                                ? 'text-derived'
+                                : 'text-muted'
                             }`}
                           >
-                            {h.likelihood}
+                            {h.likelihood} LIKELIHOOD
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
@@ -482,6 +482,28 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
                   </div>
                 )}
 
+                {result.nerRelationships && result.nerRelationships.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="font-mono text-[10px] uppercase text-muted">
+                      Extracted Relationships ({result.nerRelationships.length})
+                    </div>
+                    <div className="divide-y divide-rule rounded-[2px] border border-rule bg-well">
+                      {result.nerRelationships.map((rel, idx) => (
+                        <div key={idx} className="px-3 py-2 text-xs flex flex-wrap items-baseline justify-between gap-2">
+                          <div className="text-ink">
+                            <span className="font-semibold">{rel.source}</span>{' '}
+                            <span className="font-mono text-[10px] text-accent">—[{rel.relation}]→</span>{' '}
+                            <span className="font-semibold">{rel.target}</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-muted italic">
+                            “{rel.verbatimQuote}”
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* RECOMMENDED NEXT PIVOTS */}
                 {result.recommendedPivots && result.recommendedPivots.length > 0 && (
                   <div className="space-y-2">
@@ -523,13 +545,10 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
                         <div className="font-mono text-[10px] uppercase text-muted mb-1">
                           Cited Case Artifacts
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink">
                           {result.citations.map((c, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 rounded-[2px] bg-surface border border-rule font-mono text-[10px] text-ink"
-                            >
-                              {c}
+                            <span key={i} className="text-ink-2">
+                              [{i + 1}] {c}
                             </span>
                           ))}
                         </div>
@@ -583,47 +602,48 @@ export const CopilotVaultModule: React.FC<CopilotVaultModuleProps> = ({
           </div>
 
           <Panel
-            title="Server Connector Capability Matrix (Zero-Key Baseline + Optional Env Connectors)"
+            title="Server Connectors"
+            description="Zero-key feeds work immediately; optional API keys are read server-side from .env."
             actions={
               <Button size="sm" variant="ghost" onClick={refreshVault} disabled={loadingVault}>
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingVault ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             }
+            flush
           >
-            <p className="text-[11px] text-muted mb-3">
-              All zero-key connectors operate immediately with no credentials. Optional power connectors are enabled server-side via environment variables (see <code className="font-mono text-ink">.env.example</code>) and never exposed to the browser.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="divide-y divide-rule">
               {connectors.map((c) => (
-                <Well key={c.id} className="p-2.5 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {c.active ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-live shrink-0" />
-                      ) : (
-                        <Server className="w-3.5 h-3.5 text-muted shrink-0" />
-                      )}
-                      <span className="text-xs font-semibold text-ink">{c.name}</span>
-                    </div>
-                    <div className="font-mono text-[10px] text-muted mt-0.5">
-                      {c.category} · {c.note}
+                <div
+                  key={c.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {c.active ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-live shrink-0" />
+                    ) : (
+                      <Server className="w-3.5 h-3.5 text-muted shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-xs font-semibold text-ink">{c.name}</span>
+                        <span className="font-mono text-[10px] text-muted">{c.category}</span>
+                      </div>
+                      <div className="text-[11px] text-muted truncate">{c.note}</div>
                     </div>
                   </div>
                   <span
-                    className={`px-1.5 py-0.5 rounded-[2px] border font-mono text-[9px] uppercase shrink-0 ${
-                      c.active
-                        ? 'border-live/40 bg-live/10 text-live'
-                        : 'border-rule bg-surface text-muted'
+                    className={`font-mono text-[10px] uppercase shrink-0 ${
+                      c.active ? 'text-live font-semibold' : 'text-muted'
                     }`}
                   >
                     {c.active
                       ? c.mode === 'zero-key'
-                        ? 'ZERO-KEY LIVE'
-                        : 'ENV ACTIVE'
-                      : c.envVar || 'OPTIONAL'}
+                        ? 'Zero-Key Live'
+                        : 'Env Active'
+                      : `Env: ${c.envVar || 'Optional'}`}
                   </span>
-                </Well>
+                </div>
               ))}
             </div>
           </Panel>

@@ -37,6 +37,7 @@ interface FaceReconModuleProps {
     findingSummary: string;
     sourceUrl: string;
   }) => void;
+  initialHandle?: string;
 }
 
 interface QueryImageState {
@@ -67,6 +68,7 @@ const SOURCE_CHIP: Record<FaceCandidate['sourceType'], string> = {
 export const FaceReconModule: React.FC<FaceReconModuleProps> = ({
   activeCase,
   onAppendLedger,
+  initialHandle,
 }) => {
   const [engineError, setEngineError] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState(false);
@@ -77,8 +79,14 @@ export const FaceReconModule: React.FC<FaceReconModuleProps> = ({
   const [gaps, setGaps] = useState<string[]>([]);
   const [results, setResults] = useState<RankedFaceMatch[] | null>(null);
   const [clusters, setClusters] = useState<string[][] | null>(null);
-  const [usernameInput, setUsernameInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState(initialHandle ?? '');
   const [portraitNameInput, setPortraitNameInput] = useState('');
+
+  useEffect(() => {
+    if (initialHandle) {
+      setUsernameInput(initialHandle.replace(/^@/, ''));
+    }
+  }, [initialHandle]);
 
   const objectUrlsRef = useRef<string[]>([]);
   const trackObjectUrl = (url: string) => {

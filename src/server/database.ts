@@ -162,6 +162,15 @@ export class Info9Database {
     this.db.prepare('DELETE FROM scan_jobs WHERE case_id = ?').run(caseId);
   }
 
+  public clearAllData(): void {
+    this.db.exec(`
+      DELETE FROM cases;
+      DELETE FROM collected_pages;
+      DELETE FROM pages_fts;
+      DELETE FROM scan_jobs;
+    `);
+  }
+
   public saveCollectedPage(
     caseId: string,
     page: CollectedWebPage,
@@ -500,13 +509,22 @@ export function getConnectorStatusMatrix(): ConnectorStatusEntry[] {
       note: 'Zero-key blockchain clustering & vessel screening',
     },
     {
+      id: 'local-evidence-copilot',
+      name: 'Local Evidence-Grounded Synthesis Engine',
+      category: 'AI Analysis',
+      mode: 'zero-key',
+      envVar: null,
+      active: true,
+      note: 'Deterministic zero-key ACH matrix, verbatim-quote NER, pivot planning & case Q&A',
+    },
+    {
       id: 'gemini-copilot',
       name: 'Gemini Case Analyst Copilot (gemini-4-hydrogen)',
       category: 'AI Analysis',
       mode: 'optional-env-key',
       envVar: 'GEMINI_API_KEY',
       active: has('GEMINI_API_KEY'),
-      note: 'Evidence-grounded NER, ACH & next-pivot reasoning',
+      note: 'Optional LLM synthesis upgrade when GEMINI_API_KEY is set in server .env',
     },
   ];
 }

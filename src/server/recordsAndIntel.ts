@@ -537,6 +537,7 @@ export interface CryptoWalletIntel {
     program?: string;
     identifierCode?: string;
   };
+  ofacCheckedCount: number;
   recentTransactions: Array<{
     hash: string;
     timestampUtc: string | null;
@@ -640,6 +641,7 @@ export async function lookupCryptoWallet(
       spentTotal: `${(spent / 1e8).toFixed(6)} BTC`,
       isContract: false,
       ofacSanctionedMatch,
+      ofacCheckedCount: ofacCandidates.length,
       recentTransactions,
       explorerUrl: `https://mempool.space/address/${encodeURIComponent(address)}`,
       provenanceSource: 'Mempool.space Bitcoin REST API + OFAC SDN Cross-Check',
@@ -690,6 +692,7 @@ export async function lookupCryptoWallet(
       spentTotal: null,
       isContract: Boolean(a.is_contract),
       ofacSanctionedMatch,
+      ofacCheckedCount: ofacCandidates.length,
       recentTransactions,
       explorerUrl: `https://eth.blockscout.com/address/${encodeURIComponent(address)}`,
       provenanceSource: 'Blockscout Ethereum v2 API + OFAC SDN Cross-Check',
@@ -707,6 +710,7 @@ export async function lookupCryptoWallet(
     spentTotal: null,
     isContract: false,
     ofacSanctionedMatch,
+    ofacCheckedCount: ofacCandidates.length,
     recentTransactions: [],
     explorerUrl: `https://tronscan.org/#/address/${encodeURIComponent(address)}`,
     provenanceSource: 'OFAC SDN Cross-Check + TronScan Pivot',
@@ -730,6 +734,7 @@ export interface MaritimeVesselResult {
     identifierCode: string;
     notes: string;
   }>;
+  ofacCheckedCount: number;
   verificationLinks: Array<{ label: string; url: string }>;
   fetchedAtUtc: string;
 }
@@ -818,6 +823,7 @@ export async function lookupMaritimeVessel(
     normalizedMmsi,
     wikidataMatches,
     ofacVesselMatches,
+    ofacCheckedCount: ofacCandidates.length,
     verificationLinks,
     fetchedAtUtc: new Date().toISOString(),
   };

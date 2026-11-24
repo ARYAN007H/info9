@@ -45,6 +45,7 @@ interface InvestigationRunModuleProps {
   }) => void;
   initialTarget?: string;
   initialKind?: EntityKind;
+  initialSpiderKind?: 'domain' | 'ip' | 'email' | 'username' | 'entity-name';
   onRouteSmartClue?: (action: SmartRouteAction) => void;
   onSelectModule?: (moduleId: ModuleId) => void;
   onPivotToModule?: (moduleId: ModuleId, targetValue: string, subMode?: string) => void;
@@ -86,12 +87,21 @@ export function InvestigationRunModule({
   onAppendLedger,
   initialTarget,
   initialKind,
+  initialSpiderKind,
   onRouteSmartClue,
   onPivotToModule,
 }: InvestigationRunModuleProps) {
   const [viewMode, setViewMode] = useState<'spider' | 'chains' | 'graph'>('spider');
   const [inputKind, setInputKind] = useState<EntityKind>(
     initialKind || 'domain'
+  );
+  const [spiderKind, setSpiderKind] = useState<
+    'domain' | 'ip' | 'email' | 'username' | 'entity-name'
+  >(
+    initialSpiderKind ||
+      (initialKind === 'ip' || initialKind === 'domain' || initialKind === 'entity-name'
+        ? initialKind
+        : 'domain')
   );
   const [target, setTarget] = useState(initialTarget || '');
   const [isRunning, setIsRunning] = useState(false);
@@ -101,7 +111,12 @@ export function InvestigationRunModule({
   useEffect(() => {
     if (initialTarget) setTarget(initialTarget);
     if (initialKind) setInputKind(initialKind);
-  }, [initialTarget, initialKind]);
+    if (initialSpiderKind) {
+      setSpiderKind(initialSpiderKind);
+    } else if (initialKind === 'ip' || initialKind === 'domain' || initialKind === 'entity-name') {
+      setSpiderKind(initialKind);
+    }
+  }, [initialTarget, initialKind, initialSpiderKind]);
 
   const recipe: ChainRecipe = useMemo(() => {
     return (
@@ -191,6 +206,7 @@ export function InvestigationRunModule({
       {viewMode === 'spider' ? (
         <RecursiveSpiderPanel
           caseId={activeCase.id}
+          initialKind={spiderKind}
           initialTarget={target || undefined}
           onAddEntities={onAddEntities}
           onCommitLedger={(entry) =>
@@ -209,6 +225,9 @@ export function InvestigationRunModule({
           activeCase={activeCase}
           onPivotInvestigate={(kind, val) => {
             setInputKind(kind);
+            if (kind === 'domain' || kind === 'ip' || kind === 'entity-name') {
+              setSpiderKind(kind);
+            }
             setTarget(val);
             setViewMode('spider');
           }}

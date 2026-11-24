@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Anchor,
   Building2,
@@ -8,6 +8,7 @@ import {
   Scale,
   Search,
   ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import type { ModuleId, ProvenanceMeta } from '../types/osint';
 import {
@@ -56,11 +57,14 @@ interface MaritimeVesselResult {
     identifierCode: string;
     notes: string;
   }>;
+  ofacCheckedCount?: number;
   verificationLinks: Array<{ label: string; url: string }>;
   fetchedAtUtc: string;
 }
 
 interface PublicRecordsMaritimePanelProps {
+  forcedMode?: 'records' | 'maritime';
+  initialQuery?: string;
   onCommitLedger: (entry: {
     module: ModuleId;
     targetLabel: string;
@@ -71,12 +75,15 @@ interface PublicRecordsMaritimePanelProps {
 }
 
 export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProps> = ({
+  forcedMode,
+  initialQuery,
   onCommitLedger,
 }) => {
-  const [subTab, setSubTab] = useState<'records' | 'maritime'>('records');
+  const [internalTab, setInternalTab] = useState<'records' | 'maritime'>(forcedMode ?? 'records');
+  const subTab = forcedMode ?? internalTab;
 
   // Public Records state
-  const [recQuery, setRecQuery] = useState('');
+  const [recQuery, setRecQuery] = useState(initialQuery ?? '');
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const [recResult, setRecResult] = useState<PublicRecordsSearchResult | null>(null);
@@ -87,14 +94,21 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
   const [vesselError, setVesselError] = useState<string | null>(null);
   const [vesselResult, setVesselResult] = useState<MaritimeVesselResult | null>(null);
 
-  const runPublicRecords = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!recQuery.trim()) return;
+  useEffect(() => {
+    if (initialQuery && !recQuery) {
+      setRecQuery(initialQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
+
+  const executePublicRecords = async (qOverride?: string) => {
+    const clean = (qOverride ?? recQuery).trim();
+    if (!clean) return;
     setRecLoading(true);
     setRecError(null);
     try {
       const res = await fetch(
-        `/api/osint/public-records?q=${encodeURIComponent(recQuery.trim())}`
+        `/api/osint/public-records?q=${encodeURIComponent(clean)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -106,14 +120,14 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
     }
   };
 
-  const runVesselLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vesselQuery.trim()) return;
+  const executeVesselLookup = async (qOverride?: string) => {
+    const clean = (qOverride ?? vesselQuery).trim();
+    if (!clean) return;
     setVesselLoading(true);
     setVesselError(null);
     try {
       const res = await fetch(
-        `/api/osint/maritime/vessel?q=${encodeURIComponent(vesselQuery.trim())}`
+        `/api/osint/maritime/vessel?q=${encodeURIComponent(clean)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -127,21 +141,33 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
 
   return (
     <Panel
-      title="Global Public Records (SEC EDGAR · CourtListener · OpenSanctions · ICIJ) & Maritime AIS"
+      title={
+        subTab === 'maritime'
+          ? 'Maritime Vessel Lookup & OFAC Check'
+          : 'Global Public Records — SEC EDGAR, Courts, OpenSanctions & ICIJ'
+      }
       actions={
-        <SegmentedTabs
-          value={subTab}
-          onChange={(v) => setSubTab(v as 'records' | 'maritime')}
-          items={[
-            { id: 'records', label: 'Filings, Courts & Offshore' },
-            { id: 'maritime', label: 'Maritime Vessel / IMO' },
-          ]}
-        />
+        !forcedMode ? (
+          <SegmentedTabs
+            value={subTab}
+            onChange={(v) => setInternalTab(v as 'records' | 'maritime')}
+            items={[
+              { id: 'records', label: 'Filings, Courts & Offshore' },
+              { id: 'maritime', label: 'Maritime Vessel / IMO' },
+            ]}
+          />
+        ) : undefined
       }
     >
       {subTab === 'records' && (
         <div className="space-y-3">
-          <form onSubmit={runPublicRecords} className="flex flex-col sm:flex-row gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void executePublicRecords();
+            }}
+            className="flex flex-col sm:flex-row gap-2"
+          >
             <div className="flex-1">
               <FieldLabel htmlFor="pr-query">
                 Company, Executive, or Shell Name
@@ -150,7 +176,7 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
                 id="pr-query"
                 value={recQuery}
                 onChange={(e) => setRecQuery(e.target.value)}
-                placeholder="e.g. Palantir, Gazprom, or offshore holding name"
+                placeholder="e.g. Palantir, Maersk, Cloudflare, or offshore holding name"
               />
             </div>
             <div className="flex items-end">
@@ -161,23 +187,40 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
             </div>
           </form>
 
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <span className="font-mono text-[10px] uppercase">Try:</span>
+            {['Palantir', 'Maersk', 'Cloudflare'].map((sample) => (
+              <Button
+                key={sample}
+                type="button"
+                variant="chip"
+                onClick={() => {
+                  setRecQuery(sample);
+                  void executePublicRecords(sample);
+                }}
+              >
+                {sample}
+              </Button>
+            ))}
+          </div>
+
           {recError && <NoticeBanner tone="danger">{recError}</NoticeBanner>}
 
           {recResult && (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]">
                   {recResult.sourceSummary.map((s) => (
                     <span
                       key={s.source}
                       title={s.note}
-                      className={`px-2 py-0.5 rounded-[2px] border font-mono text-[10px] ${
+                      className={
                         s.status === 'ok'
-                          ? 'border-live/40 bg-live/10 text-live'
+                          ? 'text-live font-semibold'
                           : s.status === 'empty'
-                          ? 'border-rule bg-well text-muted'
-                          : 'border-gap/40 bg-gap/10 text-gap'
-                      }`}
+                          ? 'text-muted'
+                          : 'text-gap'
+                      }
                     >
                       {s.source}: {s.status === 'gap' ? 'gap' : s.count}
                     </span>
@@ -187,9 +230,9 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
                   href={recResult.icijDirectSearchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-2 py-1 rounded-[2px] border border-accent/50 bg-accent/10 font-mono text-[10px] text-accent inline-flex items-center gap-1 hover:bg-accent/20"
+                  className="font-mono text-[11px] text-accent underline decoration-accent/40 underline-offset-2 inline-flex items-center gap-1 hover:decoration-accent"
                 >
-                  Search ICIJ Offshore Leaks (Panama/Pandora)
+                  Search ICIJ Offshore Leaks
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -203,8 +246,8 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
                   {recResult.hits.map((h) => (
                     <Well key={h.id} className="p-2.5 flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 flex-1 space-y-0.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded-[2px] bg-surface border border-rule font-mono text-[9px] text-accent">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-[10px] font-semibold uppercase text-accent">
                             {h.source}
                           </span>
                           <a
@@ -255,7 +298,13 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
 
       {subTab === 'maritime' && (
         <div className="space-y-3">
-          <form onSubmit={runVesselLookup} className="flex flex-col sm:flex-row gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void executeVesselLookup();
+            }}
+            className="flex flex-col sm:flex-row gap-2"
+          >
             <div className="flex-1">
               <FieldLabel htmlFor="mv-query">Vessel Name, 7-Digit IMO, or 9-Digit MMSI</FieldLabel>
               <TextField
@@ -273,26 +322,48 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
             </div>
           </form>
 
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <span className="font-mono text-[10px] uppercase">Try:</span>
+            {['Ever Given', 'IMO 9811000'].map((sample) => (
+              <Button
+                key={sample}
+                type="button"
+                variant="chip"
+                onClick={() => {
+                  setVesselQuery(sample);
+                  void executeVesselLookup(sample);
+                }}
+              >
+                {sample}
+              </Button>
+            ))}
+          </div>
+
           {vesselError && <NoticeBanner tone="danger">{vesselError}</NoticeBanner>}
 
           {vesselResult && (
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 font-mono text-[11px]">
-                <span className="px-2 py-0.5 rounded-[2px] bg-well border border-rule text-ink">
-                  IMO: {vesselResult.normalizedImo ?? 'not detected'}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-rule pb-2 font-mono text-[11px]">
+                <span className="text-ink">
+                  <span className="text-muted">IMO:</span> {vesselResult.normalizedImo ?? '—'}
                 </span>
-                <span className="px-2 py-0.5 rounded-[2px] bg-well border border-rule text-ink">
-                  MMSI: {vesselResult.normalizedMmsi ?? 'not detected'}
+                <span className="text-ink">
+                  <span className="text-muted">MMSI:</span> {vesselResult.normalizedMmsi ?? '—'}
                 </span>
-                <span
-                  className={`px-2 py-0.5 rounded-[2px] border ${
-                    vesselResult.ofacVesselMatches.length > 0
-                      ? 'border-danger/50 bg-danger/10 text-danger'
-                      : 'border-live/40 bg-live/10 text-live'
-                  }`}
-                >
-                  OFAC SDN Vessel Hits: {vesselResult.ofacVesselMatches.length}
-                </span>
+                {vesselResult.ofacVesselMatches.length > 0 ? (
+                  <span className="font-semibold text-danger inline-flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    OFAC SDN Vessel Hits: {vesselResult.ofacVesselMatches.length}
+                  </span>
+                ) : (
+                  <span className="font-semibold text-live inline-flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    0 OFAC SDN Hits
+                    {typeof vesselResult.ofacCheckedCount === 'number' && vesselResult.ofacCheckedCount > 0
+                      ? ` (${vesselResult.ofacCheckedCount.toLocaleString()} live records checked)`
+                      : ''}
+                  </span>
+                )}
               </div>
 
               {vesselResult.ofacVesselMatches.length > 0 && (

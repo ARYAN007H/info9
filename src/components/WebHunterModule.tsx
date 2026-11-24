@@ -251,11 +251,11 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
           <div className="flex items-center gap-2">
             <span className="signage text-[10px] font-semibold text-accent">10</span>
             <h2 className="text-[15px] font-semibold tracking-tight text-ink">
-              Web Hunter — Universal Discovery &amp; Live Page Intelligence
+              Web Hunter
             </h2>
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            Zero-key multi-source open-web search, automated Dork Matrix, SSRF-guarded artifact &amp; MurmurHash3 favicon extractor, and SQLite FTS5 case archive.
+            Search open feeds, extract page intelligence, launch dorks, or query archived pages.
           </p>
         </div>
         <SegmentedTabs
@@ -310,27 +310,45 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted mr-1">
-                  Sources:
-                </span>
-                {ALL_SOURCES.map((src) => {
-                  const active = enabledSources.includes(src);
-                  return (
-                    <button
-                      key={src}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted mr-1">
+                    Sources:
+                  </span>
+                  {ALL_SOURCES.map((src) => {
+                    const active = enabledSources.includes(src);
+                    return (
+                      <button
+                        key={src}
+                        type="button"
+                        onClick={() => toggleSource(src)}
+                        className={`px-2 py-0.5 rounded-[2px] border font-mono text-[10px] transition-colors ${
+                          active
+                            ? 'bg-accent/15 border-accent/50 text-accent'
+                            : 'bg-well border-rule text-muted hover:text-ink'
+                        }`}
+                      >
+                        {src}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                  <span className="font-mono text-[10px] uppercase">Try:</span>
+                  {['cloudflare.com', 'bellingcat', 'wikimedia'].map((sample) => (
+                    <Button
+                      key={sample}
                       type="button"
-                      onClick={() => toggleSource(src)}
-                      className={`px-2 py-0.5 rounded-[2px] border font-mono text-[10px] transition-colors ${
-                        active
-                          ? 'bg-accent/15 border-accent/50 text-accent'
-                          : 'bg-well border-rule text-muted hover:text-ink'
-                      }`}
+                      variant="chip"
+                      onClick={() => {
+                        setSearchQuery(sample);
+                        void runSearch(sample);
+                      }}
                     >
-                      {src}
-                    </button>
-                  );
-                })}
+                      {sample}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </form>
 
@@ -344,20 +362,20 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
           {searchResult && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px]">
                   {searchResult.sourceSummary.map((s) => (
                     <span
                       key={s.source}
-                      className={`px-2 py-0.5 rounded-[2px] border font-mono text-[10px] ${
+                      className={
                         s.status === 'ok'
-                          ? 'border-live/40 bg-live/10 text-live'
+                          ? 'text-live'
                           : s.status === 'empty'
-                          ? 'border-rule bg-well text-muted'
-                          : 'border-gap/40 bg-gap/10 text-gap'
-                      }`}
+                          ? 'text-muted'
+                          : 'text-gap'
+                      }
                       title={s.note}
                     >
-                      {s.source}: {s.status === 'error' ? 'gap' : s.count}
+                      {s.source} {s.status === 'error' ? 'gap' : s.count}
                     </span>
                   ))}
                 </div>
@@ -382,10 +400,11 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
                     <Well key={hit.id} className="p-3 space-y-1.5">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-1.5 py-0.5 rounded-[2px] bg-surface border border-rule font-mono text-[10px] text-accent">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-accent">
                               {hit.source}
                             </span>
+                            <span className="text-muted">·</span>
                             <a
                               href={hit.url}
                               target="_blank"
@@ -453,7 +472,7 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
       {/* TAB 2: LIVE PAGE INTELLIGENCE EXTRACTOR */}
       {tab === 'extract' && (
         <div className="space-y-4">
-          <Panel title="SSRF-Guarded Live Page Intelligence Extractor">
+          <Panel title="Live Page Extractor">
             <form
               className="flex flex-col sm:flex-row gap-2"
               onSubmit={(e) => {
@@ -480,15 +499,33 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
                   ) : (
                     <>
                       <Sparkles className="w-3.5 h-3.5" />
-                      Fetch &amp; Extract Artifacts
+                      Fetch &amp; Extract
                     </>
                   )}
                 </Button>
               </div>
             </form>
-            <p className="mt-2 font-mono text-[10px] text-muted">
-              Server-side DNS + IP SSRF guard blocks loopback, RFC1918, and cloud metadata. Extracts emails, phones, handles, BTC/ETH/TRC20 wallets, GA4/UA/GTM/AdSense IDs, outbound domains, Shodan MurmurHash3 favicon hash, and archives SHA-256 + full text to SQLite FTS5.
-            </p>
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[10px] text-muted">
+                SSRF-guarded fetch: extracts contacts, trackers, wallets, and favicon hash to SQLite FTS5.
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                <span className="font-mono text-[10px] uppercase">Try:</span>
+                {['https://example.com', 'https://www.wikipedia.org'].map((sample) => (
+                  <Button
+                    key={sample}
+                    type="button"
+                    variant="chip"
+                    onClick={() => {
+                      setExtractUrl(sample);
+                      void runExtract(sample);
+                    }}
+                  >
+                    {sample.replace(/^https?:\/\//, '')}
+                  </Button>
+                ))}
+              </div>
+            </div>
             {extractError && (
               <div className="mt-3">
                 <NoticeBanner tone="danger">{extractError}</NoticeBanner>
@@ -660,16 +697,29 @@ export const WebHunterModule: React.FC<WebHunterModuleProps> = ({
       {/* TAB 3: AUTOMATED DORK MATRIX */}
       {tab === 'dorks' && (
         <div className="space-y-4">
-          <Panel title="Automated OSINT Dork Matrix">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1">
+          <Panel title="Automated Dork Matrix">
+            <div className="space-y-2.5">
+              <div>
                 <FieldLabel htmlFor="wh-dork-target">Target Domain, Person, or Organization</FieldLabel>
                 <TextField
                   id="wh-dork-target"
                   value={dorkTarget}
                   onChange={(e) => setDorkTarget(e.target.value)}
-                  placeholder="e.g. example.org or Meridian Maritime Holdings"
+                  placeholder="e.g. example.org or Maersk"
                 />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                <span className="font-mono text-[10px] uppercase">Try:</span>
+                {['example.org', 'Maersk'].map((sample) => (
+                  <Button
+                    key={sample}
+                    type="button"
+                    variant="chip"
+                    onClick={() => setDorkTarget(sample)}
+                  >
+                    {sample}
+                  </Button>
+                ))}
               </div>
             </div>
           </Panel>
