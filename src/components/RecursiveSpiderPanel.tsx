@@ -124,10 +124,18 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
     setRunning(false);
   };
 
-  const startSpider = (e?: React.FormEvent) => {
+  const startSpider = (
+    e?: React.FormEvent,
+    override?: { kind: SeedKind; target: string }
+  ) => {
     e?.preventDefault();
-    const target = seedValue.trim();
+    const activeKind = override?.kind ?? seedKind;
+    const target = (override?.target ?? seedValue).trim();
     if (!target) return;
+    if (override) {
+      setSeedKind(override.kind);
+      setSeedValue(override.target);
+    }
 
     esRef.current?.close();
     setRunning(true);
@@ -140,7 +148,7 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
 
     const qs = new URLSearchParams({
       caseId,
-      kind: seedKind,
+      kind: activeKind,
       target,
       depth: String(depth),
     });
@@ -219,7 +227,7 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
 
   return (
     <Panel
-      title="Recursive Multi-Hop Pivot Spider (Live SSE · Depth 1–3 · SQLite Job Tracked)"
+      title="Recursive Pivot Spider"
       actions={
         entities.length > 0 ? (
           <Button
@@ -244,11 +252,11 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
               onChange={(e) => setSeedKind(e.target.value as SeedKind)}
               className="w-full h-9 px-2.5 rounded-[2px] border border-rule bg-surface text-xs text-ink font-mono"
             >
-              <option value="domain">Domain (DNS → IP → Co-hosted → BGP)</option>
-              <option value="email">Email (PGP/Breach → GitHub → Domain)</option>
-              <option value="username">Username (8 APIs → Emails → Sites)</option>
-              <option value="ip">IPv4 (Geo → Shodan → BGP ASN)</option>
-              <option value="entity-name">Org / Person (GLEIF → SEC/Courts)</option>
+              <option value="domain">Domain (DNS → IP → BGP)</option>
+              <option value="email">Email (PGP → GitHub)</option>
+              <option value="username">Username (8 Platforms)</option>
+              <option value="ip">IPv4 (Geo → ASN)</option>
+              <option value="entity-name">Org / Person (Registries)</option>
             </select>
           </div>
           <div className="sm:col-span-5">
@@ -293,11 +301,71 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
           </div>
         </form>
 
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span className="font-mono text-[10px] uppercase">Try:</span>
+          {(
+            [
+              { kind: 'domain', target: 'cloudflare.com' },
+              { kind: 'username', target: 'torvalds' },
+              { kind: 'ip', target: '1.1.1.1' },
+            ] as const
+          ).map((s) => (
+            <Button
+              key={`${s.kind}:${s.target}`}
+              type="button"
+              variant="chip"
+              onClick={() => startSpider(undefined, s)}
+            >
+              {s.target}
+            </Button>
+          ))}
+        </div>
+
         {error && <NoticeBanner tone="danger">{error}</NoticeBanner>}
 
         {(running || events.length > 0 || entities.length > 0) && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
-            {/* Live Hop Stream */}
+            {/* Discovered Entities & Relationships — primary */}
+            <Well className="p-3 space-y-2 max-h-80 overflow-y-auto">
+              <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-live flex items-center gap-1.5">
+                <GitBranch className="w-3 h-3" />
+                Discovered Entities ({entities.length}) · Links ({edges.length})
+              </div>
+              {entities.length === 0 ? (
+                <div className="text-xs text-muted py-4">
+                  {running ? 'Discovering linked entities…' : 'No linked entities returned.'}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {entities.map((ent) => (
+                    <PivotChip
+                      key={ent.id}
+                      label={`H${ent.hop} [${ent.kind}] ${ent.label}`}
+                      hint={ent.source}
+                      onClick={() => {
+                        if (!onPivotToModule) return;
+                        if (ent.kind === 'domain') onPivotToModule('infra', ent.value);
+                        else if (ent.kind === 'username') onPivotToModule('identity', ent.value, 'username');
+                        else if (ent.kind === 'email') onPivotToModule('identity', ent.value, 'email');
+                        else if (ent.kind === 'url') onPivotToModule('webhunter', ent.value, 'extract');
+                        else onPivotToModule('webhunter', ent.value, 'search');
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+              {edges.length > 0 && (
+                <div className="pt-2 border-t border-rule space-y-1 font-mono text-[10px] text-muted">
+                  {edges.slice(0, 18).map((ed) => (
+                    <div key={ed.id} className="truncate">
+                      {ed.sourceId} <span className="text-accent">—[{ed.relation}]→</span> {ed.targetId}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Well>
+
+            {/* Live Execution Stream — secondary */}
             <Well className="p-3 space-y-2 max-h-80 overflow-y-auto">
               <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent flex items-center gap-1.5">
                 {running ? (
@@ -305,14 +373,11 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
                 ) : (
                   <Activity className="w-3 h-3" />
                 )}
-                Live Execution Stream ({events.length} updates)
+                Execution Stream ({events.length})
               </div>
-              <div className="space-y-1.5 font-mono text-[11px]">
+              <div className="divide-y divide-rule font-mono text-[11px]">
                 {events.map((ev, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2 rounded-[2px] bg-surface border border-rule space-y-0.5"
-                  >
+                  <div key={idx} className="py-1.5 space-y-0.5 first:pt-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-ink font-semibold">
                         {ev.hop !== undefined ? `[HOP ${ev.hop}] ` : ''}
@@ -338,40 +403,6 @@ export const RecursiveSpiderPanel: React.FC<RecursiveSpiderPanelProps> = ({
                   </div>
                 ))}
               </div>
-            </Well>
-
-            {/* Discovered Entities & Relationships */}
-            <Well className="p-3 space-y-2 max-h-80 overflow-y-auto">
-              <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-live flex items-center gap-1.5">
-                <GitBranch className="w-3 h-3" />
-                Discovered Graph ({entities.length} Entities · {edges.length} Links)
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {entities.map((ent) => (
-                  <PivotChip
-                    key={ent.id}
-                    label={`H${ent.hop} [${ent.kind}] ${ent.label}`}
-                    hint={ent.source}
-                    onClick={() => {
-                      if (!onPivotToModule) return;
-                      if (ent.kind === 'domain') onPivotToModule('infra', ent.value);
-                      else if (ent.kind === 'username') onPivotToModule('identity', ent.value, 'username');
-                      else if (ent.kind === 'email') onPivotToModule('identity', ent.value, 'email');
-                      else if (ent.kind === 'url') onPivotToModule('webhunter', ent.value, 'extract');
-                      else onPivotToModule('webhunter', ent.value, 'search');
-                    }}
-                  />
-                ))}
-              </div>
-              {edges.length > 0 && (
-                <div className="pt-2 border-t border-rule space-y-1 font-mono text-[10px] text-muted">
-                  {edges.slice(0, 18).map((ed) => (
-                    <div key={ed.id} className="truncate">
-                      {ed.sourceId} <span className="text-accent">—[{ed.relation}]→</span> {ed.targetId}
-                    </div>
-                  ))}
-                </div>
-              )}
             </Well>
           </div>
         )}

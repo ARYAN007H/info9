@@ -83,7 +83,7 @@ export const CryptoWalletPanel: React.FC<CryptoWalletPanelProps> = ({
   }, [initialAddress]);
 
   return (
-    <Panel title="Crypto Wallet Forensics & OFAC SDN Cross-Check (BTC · ETH · TRC20)">
+    <Panel title="Crypto Wallet Forensics & OFAC Check">
       <div className="space-y-3">
         <form
           onSubmit={(e) => {
@@ -109,23 +109,42 @@ export const CryptoWalletPanel: React.FC<CryptoWalletPanelProps> = ({
           </div>
         </form>
 
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span className="font-mono text-[10px] uppercase">Try:</span>
+          {[
+            { label: 'BTC Genesis (1A1zP1…)', addr: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' },
+            { label: 'ETH Vitalik (0xd8dA…)', addr: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' },
+          ].map((s) => (
+            <Button
+              key={s.addr}
+              type="button"
+              variant="chip"
+              onClick={() => {
+                setAddress(s.addr);
+                void traceWallet(s.addr);
+              }}
+            >
+              {s.label}
+            </Button>
+          ))}
+        </div>
+
         {error && <NoticeBanner tone="danger">{error}</NoticeBanner>}
 
         {wallet && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-[2px] bg-accent/15 border border-accent/40 font-mono text-[10px] text-accent">
-                  {wallet.chain}
-                </span>
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                <span className="font-semibold text-accent">{wallet.chain}</span>
+                <span className="text-muted">·</span>
                 {wallet.ofacSanctionedMatch.matched ? (
-                  <span className="px-2 py-0.5 rounded-[2px] bg-danger/15 border border-danger/50 font-mono text-[10px] text-danger inline-flex items-center gap-1">
-                    <ShieldAlert className="w-3 h-3" />
+                  <span className="font-semibold text-danger inline-flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" />
                     OFAC SDN MATCH: {wallet.ofacSanctionedMatch.listedName} ({wallet.ofacSanctionedMatch.program})
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-[2px] bg-live/10 border border-live/40 font-mono text-[10px] text-live inline-flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" />
+                  <span className="font-semibold text-live inline-flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
                     No OFAC SDN Wallet Match
                   </span>
                 )}

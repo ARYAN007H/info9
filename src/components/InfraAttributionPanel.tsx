@@ -127,8 +127,9 @@ export const InfraAttributionPanel: React.FC<InfraAttributionPanelProps> = ({
     >
       {!data && !loading && !error && (
         <p className="text-xs text-muted">
-          Run zero-key deep attribution on <span className="font-mono text-ink">{domain}</span>
-          {ipHint ? ` (${ipHint})` : ''}: URLScan reverse-IP co-hosted domains, AlienVault OTX passive DNS &amp; threat pulses, abuse.ch URLhaus &amp; ThreatFox IOCs, BGPView prefix allocation, HTTP security headers, Analytics IDs, and Shodan MurmurHash3 favicon hash.
+          Probes URLScan reverse-IP, AlienVault OTX, abuse.ch, BGPView, HTTP headers, trackers &amp; favicon hash for{' '}
+          <span className="font-mono text-ink">{domain}</span>
+          {ipHint ? ` (${ipHint})` : ''}.
         </p>
       )}
       {error && <NoticeBanner tone="danger">{error}</NoticeBanner>}

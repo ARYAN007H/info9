@@ -81,11 +81,11 @@ export const TimelineHeatmapModule: React.FC<TimelineHeatmapModuleProps> = ({
           <div className="flex items-center gap-2">
             <span className="signage text-[10px] font-semibold text-accent">11</span>
             <h2 className="text-[15px] font-semibold tracking-tight text-ink">
-              Unified Timeline &amp; 24×7 Behavioral Timezone Fingerprinting
+              Unified Timeline &amp; Timezone Heatmap
             </h2>
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            Synthesizes every domain registration, commit/post timestamp, archival capture, EXIF date, and ledger entry into one master chronology + sleep-window UTC offset estimator.
+            Master chronology and 24×7 UTC sleep-window estimator across all case artifacts.
           </p>
         </div>
         <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
@@ -96,7 +96,7 @@ export const TimelineHeatmapModule: React.FC<TimelineHeatmapModuleProps> = ({
 
       {/* BEHAVIORAL 24x7 UTC HEATMAP */}
       <Panel
-        title="24×7 UTC Activity Heatmap & Sleep-Window Timezone Estimator"
+        title="24×7 UTC Activity Heatmap"
         actions={
           enrichedProfiles.length > 0 ? (
             <div className="flex items-center gap-1.5">
@@ -196,9 +196,11 @@ export const TimelineHeatmapModule: React.FC<TimelineHeatmapModuleProps> = ({
             </div>
           </div>
 
-          <p className="font-mono text-[10px] text-muted">
-            Tip: Run Profile Enrichment in Module 05 (Identity) on any GitHub or Reddit handle and commit the profile to populate real commit/post timestamps for behavioral timezone correlation.
-          </p>
+          {allEvents.length < 3 && (
+            <p className="font-mono text-[10px] text-muted">
+              Tip: Enrich a handle in Module 05 (Identity) and commit it to plot real commit/post timestamps here.
+            </p>
+          )}
         </div>
       </Panel>
 
@@ -246,13 +248,15 @@ export const TimelineHeatmapModule: React.FC<TimelineHeatmapModuleProps> = ({
                 className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-l-2 border-l-accent"
               >
                 <div className="space-y-0.5 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-mono text-[11px] font-semibold text-accent tnum">
                       {ev.timestampUtc.replace('T', ' ').slice(0, 19)} UTC
                     </span>
-                    <span className="px-1.5 py-0.5 rounded-[2px] bg-surface border border-rule font-mono text-[9px] uppercase text-muted">
+                    <span className="text-muted">·</span>
+                    <span className="font-mono text-[10px] uppercase text-muted">
                       {KIND_LABELS[ev.kind]}
                     </span>
+                    <span className="text-muted">·</span>
                     <span className="text-xs font-semibold text-ink">{ev.title}</span>
                   </div>
                   <div className="text-[11px] text-muted">{ev.detail}</div>
