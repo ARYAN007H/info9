@@ -41,3 +41,6 @@ metadata.json
 
 # Coverage
 coverage/
+
+# Local SQLite database
+.info9-data/

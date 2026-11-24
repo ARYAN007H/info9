@@ -77,6 +77,27 @@ export const MODULE_CATALOG: Record<ModuleId, ModuleCatalogEntry> = {
     shortName: 'ACU',
     job: 'Geolocate a recording from aircraft Doppler curves matched to ADS-B tracks.',
   },
+  webhunter: {
+    id: 'webhunter',
+    num: '10',
+    name: 'Web Hunter',
+    shortName: 'WEB',
+    job: 'Universal open-web & deep-source search, dork matrix, live page extractor, and FTS5 case archive.',
+  },
+  timeline: {
+    id: 'timeline',
+    num: '11',
+    name: 'Timeline',
+    shortName: 'TIM',
+    job: 'Master chronological timeline across all artifacts plus 24x7 UTC behavioral timezone heatmap.',
+  },
+  copilot: {
+    id: 'copilot',
+    num: '12',
+    name: 'AI Copilot',
+    shortName: 'COP',
+    job: 'Evidence-grounded NER, Competing Hypotheses (ACH), next-pivot planner, and SQLite job/connector status.',
+  },
 };
 
 export const MODULE_ORDER: ModuleId[] = [
@@ -89,4 +110,7 @@ export const MODULE_ORDER: ModuleId[] = [
   'sanctions',
   'face',
   'acoustic',
+  'webhunter',
+  'timeline',
+  'copilot',
 ];

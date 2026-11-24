@@ -9,6 +9,7 @@ export type SmartClueKind =
   | 'domain'
   | 'url'
   | 'username'
+  | 'wallet'
   | 'entity_or_place';
 
 export interface SmartRouteAction {
@@ -162,6 +163,42 @@ export function classifyUniversalIntake(
     };
   }
 
+  // 4B. Check Crypto Wallet (BTC / ETH / TRC20)
+  if (
+    /^(0x[a-fA-F0-9]{40}|(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,59}|T[A-Za-z1-9]{33})$/.test(
+      trimmed
+    )
+  ) {
+    const chain = trimmed.startsWith('0x')
+      ? 'ETH'
+      : trimmed.startsWith('T')
+      ? 'TRC20'
+      : 'BTC';
+    return {
+      rawInput: trimmed,
+      normalizedValue: trimmed,
+      kind: 'wallet',
+      badgeLabel: `${chain} WALLET`,
+      summary: `${chain} cryptocurrency address ${trimmed.slice(0, 14)}…`,
+      recommendedActions: [
+        {
+          id: 'watchlist-crypto',
+          label: `Trace ${chain} wallet & screen OFAC crypto list`,
+          moduleId: 'sanctions',
+          targetValue: trimmed,
+          subMode: 'crypto',
+        },
+        {
+          id: 'webhunter-wallet',
+          label: 'Hunt wallet mentions across open web',
+          moduleId: 'webhunter',
+          targetValue: trimmed,
+          subMode: 'search',
+        },
+      ],
+    };
+  }
+
   // 5. Check Full URL
   if (URL_RE.test(trimmed)) {
     let hostname = trimmed;
@@ -177,6 +214,13 @@ export function classifyUniversalIntake(
       badgeLabel: 'WEB URL',
       summary: `URL on host ${hostname}`,
       recommendedActions: [
+        {
+          id: 'webhunter-extract',
+          label: 'Extract page intel (emails, trackers, favicon hash)',
+          moduleId: 'webhunter',
+          targetValue: trimmed,
+          subMode: 'extract',
+        },
         {
           id: 'for-wayback',
           label: 'Check Wayback archival history',

@@ -7,7 +7,10 @@ export type ModuleId =
   | 'investigate'
   | 'sanctions'
   | 'face'
-  | 'acoustic';
+  | 'acoustic'
+  | 'webhunter'
+  | 'timeline'
+  | 'copilot';
 
 export type EntityType =
   | 'company'
@@ -16,7 +19,10 @@ export type EntityType =
   | 'domain'
   | 'ip_asn'
   | 'location'
-  | 'media';
+  | 'media'
+  | 'wallet'
+  | 'handle'
+  | 'email';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -373,6 +379,52 @@ export interface EvidenceLedgerEntry {
   snapshotHash?: string;
 }
 
+export interface ExtractedPageArtifacts {
+  emails: string[];
+  phones: string[];
+  handles: string[];
+  cryptoWallets: Array<{ chain: 'BTC' | 'ETH' | 'TRC20'; address: string }>;
+  analyticsIds: Array<{ kind: 'GA4' | 'UA' | 'GTM' | 'ADSENSE'; id: string }>;
+  outboundDomains: string[];
+  socialLinks: Array<{ platform: string; url: string; handle?: string }>;
+  metaAuthor: string | null;
+  metaGenerator: string | null;
+  faviconHash: number | null;
+  faviconUrl: string | null;
+}
+
+export interface CollectedWebPage {
+  id: string;
+  url: string;
+  domain: string;
+  title: string;
+  description: string;
+  httpStatus: number;
+  contentType: string;
+  sha256: string;
+  fetchedAtUtc: string;
+  excerpt: string;
+  artifacts: ExtractedPageArtifacts;
+  provenance: ProvenanceMeta;
+}
+
+export interface EnrichedSocialProfile {
+  platform: string;
+  handle: string;
+  profileUrl: string;
+  displayName: string | null;
+  bio: string | null;
+  location: string | null;
+  company: string | null;
+  websiteUrl: string | null;
+  avatarUrl: string | null;
+  createdAtUtc: string | null;
+  followersCount: number | null;
+  activityTimestampsUtc: string[];
+  discoveredEmails: string[];
+  provenance: ProvenanceMeta;
+}
+
 export interface InvestigationCase {
   id: string;
   codeName: string;
@@ -409,4 +461,8 @@ export interface InvestigationCase {
    * pre-existing cases and case bundles load unchanged.
    */
   autoLinkDecisions?: AutoLinkDecisions;
+  /** Phase 1: Archived & extracted web pages from Web Hunter */
+  collectedPages?: CollectedWebPage[];
+  /** Phase 1: Deep enriched social/developer profiles from Identity module */
+  enrichedProfiles?: EnrichedSocialProfile[];
 }
