@@ -10,7 +10,6 @@ import {
   Mail,
   Phone,
   Search,
-  UserSearch,
 } from 'lucide-react';
 import type {
   EnrichedSocialProfile,
@@ -38,7 +37,6 @@ import {
   Button,
   DataLabel,
   DataValue,
-  EmptyState,
   FieldLabel,
   NoticeBanner,
   Panel,
@@ -290,7 +288,7 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
       <Panel
         tag={MODULE_CATALOG.identity.num}
         title={`${MODULE_CATALOG.identity.name} — Handle, Email & Phone Recon`}
-        description="Sweep handles across ~700 community-indexed sites, run zero-key Email & Gravatar/PGP recon, or analyze international phone numbers & timezone overlap."
+        description="Sweep handles across ~700 sites, probe emails & PGP keys, or analyze phone numbers."
         actions={
           <SegmentedTabs
             size="sm"
@@ -347,12 +345,25 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
                   : 'Sweep username'}
               </Button>
             </div>
-            {datasetInfo && (
-              <DataValue className="block text-[11px] text-ink-3">
-                {datasetInfo.count} WhatsMyName probes loaded · fetched{' '}
-                {datasetInfo.fetchedAt.slice(0, 10)}
-              </DataValue>
-            )}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span>Try:</span>
+                {['torvalds', 'bellingcat'].map((sample) => (
+                  <Button
+                    key={sample}
+                    variant="chip"
+                    onClick={() => setUsername(sample)}
+                  >
+                    @{sample}
+                  </Button>
+                ))}
+              </div>
+              {datasetInfo && (
+                <DataValue className="text-[11px] text-ink-3">
+                  {datasetInfo.count} WhatsMyName probes loaded · {datasetInfo.fetchedAt.slice(0, 10)}
+                </DataValue>
+              )}
+            </div>
           </div>
         )}
 
@@ -467,16 +478,6 @@ export const IdentitySweepModule: React.FC<IdentitySweepModuleProps> = ({
           onCommitLedger={(entry) => onAppendLedger(entry)}
           onPivotToModule={(mod, val, sm) => onPivotToModule?.(mod, val, sm)}
         />
-      )}
-
-      {subMode === 'username' && !results && !isSweeping && (
-        <Panel>
-          <EmptyState
-            icon={<UserSearch className="h-5 w-5" />}
-            title="No WhatsMyName sweep run yet"
-            hint="Enter a handle above and press Sweep username to probe ~700 sites, or click Enrich handle across 8 platforms above."
-          />
-        </Panel>
       )}
 
       {subMode === 'username' && results && (

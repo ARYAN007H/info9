@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookmarkPlus,
   Download,
@@ -97,6 +97,16 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
     aliasOverlapWeight: 10,
   });
 
+  const [activeTab, setActiveTab] = useState<
+    'ofac' | 'crypto' | 'ledger' | 'demo'
+  >(initialWallet ? 'crypto' : 'ofac');
+
+  useEffect(() => {
+    if (initialWallet && initialWallet.trim()) {
+      setActiveTab('crypto');
+    }
+  }, [initialWallet]);
+
   const [dispositionFilter, setDispositionFilter] = useState<
     'ALL' | 'CONFIRMED_TARGET' | 'FALSE_POSITIVE_ELIMINATED'
   >('ALL');
@@ -175,33 +185,76 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Live OFAC SDN screening — the real Treasury list, zero keys */}
-      <OfacLiveScreening
-        onRecordHit={(hit) => {
-          onAppendLedger({
-            module: 'sanctions',
-            targetLabel: `${hit.listedName} (${hit.identifierCode})`,
-            findingSummary: `Live OFAC SDN Screening [${hit.program}]: ${hit.disposition} (${hit.compositeScore}% match)${hit.queryTarget ? ` for query "${hit.queryTarget}"` : ''}.`,
-            sourceUrl: 'https://sanctionssearch.ofac.treas.gov/',
-          });
-          setStatusMessage(
-            `Recorded live OFAC screening finding for "${hit.listedName}" to the evidence ledger.`
-          );
-        }}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="signage text-[10px] font-semibold text-accent">
+              {MODULE_CATALOG.sanctions.num}
+            </span>
+            <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+              Watchlist, Crypto Screening &amp; Ledger
+            </h2>
+          </div>
+          <p className="mt-0.5 text-xs text-ink-3">
+            Screen names against live US Treasury OFAC SDN, trace crypto wallets, and verify your SHA-256 ledger.
+          </p>
+        </div>
 
-      {/* Crypto Wallet Forensics & OFAC SDN Sanctioned-Wallet Screening */}
-      <CryptoWalletPanel
-        initialAddress={initialWallet}
-        onCommitLedger={(entry) => {
-          onAppendLedger(entry);
-          setStatusMessage(`Recorded "${entry.targetLabel}" to the evidence ledger.`);
-        }}
-      />
+        <SegmentedTabs
+          ariaLabel="Watchlist view"
+          active={activeTab}
+          onChange={setActiveTab}
+          tabs={[
+            { id: 'ofac', label: 'Live OFAC SDN' },
+            { id: 'crypto', label: 'Crypto Wallets' },
+            { id: 'ledger', label: `Evidence Ledger (${evidenceLedger.length})` },
+            { id: 'demo', label: 'Demo Matcher' },
+          ]}
+        />
+      </div>
 
+      {statusMessage && (
+        <NoticeBanner
+          tone={statusMessage.startsWith('Enter both') ? 'danger' : 'info'}
+          onDismiss={() => setStatusMessage(null)}
+        >
+          {statusMessage}
+        </NoticeBanner>
+      )}
+
+      {/* TAB 1: Live OFAC SDN screening — what matters first */}
+      {activeTab === 'ofac' && (
+        <OfacLiveScreening
+          onRecordHit={(hit) => {
+            onAppendLedger({
+              module: 'sanctions',
+              targetLabel: `${hit.listedName} (${hit.identifierCode})`,
+              findingSummary: `Live OFAC SDN Screening [${hit.program}]: ${hit.disposition} (${hit.compositeScore}% match)${hit.queryTarget ? ` for query "${hit.queryTarget}"` : ''}.`,
+              sourceUrl: 'https://sanctionssearch.ofac.treas.gov/',
+            });
+            setStatusMessage(
+              `Recorded live OFAC hit for "${hit.listedName}" to the ledger.`
+            );
+          }}
+        />
+      )}
+
+      {/* TAB 2: Crypto Wallet Forensics & OFAC SDN Sanctioned-Wallet Screening */}
+      {activeTab === 'crypto' && (
+        <CryptoWalletPanel
+          initialAddress={initialWallet}
+          onCommitLedger={(entry) => {
+            onAppendLedger(entry);
+            setStatusMessage(`Recorded "${entry.targetLabel}" to the ledger.`);
+          }}
+        />
+      )}
+
+      {/* TAB 4: Bundled 5-record demonstration matcher */}
+      {activeTab === 'demo' && (
       <Panel
-        title={`${MODULE_CATALOG.sanctions.name} screening — sample dataset`}
-        description={`${MODULE_CATALOG.sanctions.job} The bundled candidate list is a small synthetic demonstration set (5 fictional records), so the matcher can be exercised end-to-end — it is not the OFAC / EU / UN / UK lists.`}
+        title="Sample dataset matcher (5 fictional records)"
+        description="Synthetic demo records for testing phonetic & DOB false-positive filtering offline."
         actions={
           <>
             {onExportMarkdown && (
@@ -430,11 +483,23 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
           </div>
         )}
       </Panel>
+      )}
 
+      {/* TAB 3: Hash-chained evidence ledger */}
+      {activeTab === 'ledger' && (
       <Panel
         title={`Saved findings (${evidenceLedger.length})`}
-        description="Every finding recorded across the bench lands in the hash-chained ledger — also available in the drawer at the bottom of the workspace."
+        description="Hash-chained case findings — exportable as Markdown, PDF, STIX JSON, or MISP."
         actions={
+          <div className="flex flex-wrap items-center gap-1.5">
+            {onExportMarkdown && (
+              <Button variant="solid" size="sm" icon={<Download className="h-3.5 w-3.5" />} onClick={onExportMarkdown}>
+                Markdown
+              </Button>
+            )}
+            <Button variant="solid" size="sm" icon={<Download className="h-3.5 w-3.5" />} onClick={handleExportStixBundle}>
+              STIX JSON
+            </Button>
           <span
             className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 font-mono text-[11px] tabular-nums ${
               evidenceLedger.length === 0
@@ -453,9 +518,10 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
               <ShieldAlert className="h-3.5 w-3.5" />
             )}
             {evidenceLedger.length === 0
-              ? 'Ready to record'
-              : `Merkle ${merkleRootHash.slice(0, 12)}…`}
+              ? 'Ready'
+              : `Merkle ${merkleRootHash.slice(0, 10)}…`}
           </span>
+          </div>
         }
         bodyClassName="space-y-3"
       >
@@ -543,6 +609,7 @@ export const SanctionsLedgerModule: React.FC<SanctionsLedgerModuleProps> = ({
           </div>
         )}
       </Panel>
+      )}
     </div>
   );
 };

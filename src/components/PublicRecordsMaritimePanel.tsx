@@ -61,6 +61,7 @@ interface MaritimeVesselResult {
 }
 
 interface PublicRecordsMaritimePanelProps {
+  forcedMode?: 'records' | 'maritime';
   onCommitLedger: (entry: {
     module: ModuleId;
     targetLabel: string;
@@ -71,9 +72,11 @@ interface PublicRecordsMaritimePanelProps {
 }
 
 export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProps> = ({
+  forcedMode,
   onCommitLedger,
 }) => {
-  const [subTab, setSubTab] = useState<'records' | 'maritime'>('records');
+  const [internalTab, setInternalTab] = useState<'records' | 'maritime'>(forcedMode ?? 'records');
+  const subTab = forcedMode ?? internalTab;
 
   // Public Records state
   const [recQuery, setRecQuery] = useState('');
@@ -127,16 +130,22 @@ export const PublicRecordsMaritimePanel: React.FC<PublicRecordsMaritimePanelProp
 
   return (
     <Panel
-      title="Global Public Records (SEC EDGAR · CourtListener · OpenSanctions · ICIJ) & Maritime AIS"
+      title={
+        subTab === 'maritime'
+          ? 'Maritime Vessel Lookup & OFAC Check'
+          : 'Global Public Records — SEC EDGAR, Courts, OpenSanctions & ICIJ'
+      }
       actions={
-        <SegmentedTabs
-          value={subTab}
-          onChange={(v) => setSubTab(v as 'records' | 'maritime')}
-          items={[
-            { id: 'records', label: 'Filings, Courts & Offshore' },
-            { id: 'maritime', label: 'Maritime Vessel / IMO' },
-          ]}
-        />
+        !forcedMode ? (
+          <SegmentedTabs
+            value={subTab}
+            onChange={(v) => setInternalTab(v as 'records' | 'maritime')}
+            items={[
+              { id: 'records', label: 'Filings, Courts & Offshore' },
+              { id: 'maritime', label: 'Maritime Vessel / IMO' },
+            ]}
+          />
+        ) : undefined
       }
     >
       {subTab === 'records' && (

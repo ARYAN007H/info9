@@ -1,10 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { Download, FolderPlus, Upload } from 'lucide-react';
 import type { InvestigationCase, ModuleId } from '../types/osint';
-import { MODULE_CATALOG, MODULE_ORDER } from './moduleCatalog';
+import { MODULE_CATALOG } from './moduleCatalog';
 import { formatFetchedAt } from '../utils/provenance';
 import { buildUnifiedTimeline } from '../utils/timelineEngine';
 import { Button, SelectField, TextField } from './ui';
+
+const NAV_GROUPS: ReadonlyArray<{
+  label: string;
+  modules: readonly ModuleId[];
+}> = [
+  {
+    label: 'Discover',
+    modules: ['webhunter', 'investigate', 'identity', 'infra'],
+  },
+  {
+    label: 'Verify & Forensics',
+    modules: ['geolocation', 'dossier', 'sanctions', 'forensics', 'face', 'acoustic'],
+  },
+  {
+    label: 'Synthesize',
+    modules: ['timeline', 'copilot'],
+  },
+];
 
 interface CaseSpineProps {
   activeCase: InvestigationCase;
@@ -200,41 +218,53 @@ export function CaseSpine({
 
       <nav
         aria-label="Investigation modules"
-        className="flex gap-1 overflow-x-auto px-2 py-2 lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:overflow-x-hidden lg:px-0 lg:py-2"
+        className="flex gap-1 overflow-x-auto px-2 py-2 lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:overflow-x-hidden lg:px-0 lg:py-2"
       >
-        {MODULE_ORDER.map((id) => {
-          const mod = MODULE_CATALOG[id];
-          const isActive = id === activeModule;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onSelectModule(id)}
-              aria-current={isActive ? 'page' : undefined}
-              className={`flex shrink-0 items-center gap-2.5 border-l-2 px-3 py-2 text-left text-[13px] transition-colors lg:shrink ${
-                isActive
-                  ? 'border-l-accent bg-well font-semibold text-ink'
-                  : 'border-l-transparent font-medium text-ink-2 hover:bg-well/60 hover:text-ink'
-              }`}
-            >
-              <span
-                className={`signage w-5 shrink-0 text-[9px] font-semibold ${
-                  isActive ? 'text-accent' : 'text-ink-3'
-                }`}
-              >
-                {mod.num}
-              </span>
-              <span className="whitespace-nowrap">{mod.name}</span>
-              <span
-                className={`ml-auto hidden font-mono text-[11px] tabular-nums lg:inline ${
-                  counts[id] > 0 ? 'text-ink-3' : 'text-ink-3/50'
-                }`}
-              >
-                {counts[id]}
-              </span>
-            </button>
-          );
-        })}
+        {NAV_GROUPS.map((group, groupIdx) => (
+          <div
+            key={group.label}
+            className={`flex shrink-0 items-center gap-1 lg:block ${
+              groupIdx > 0 ? 'lg:mt-3' : ''
+            }`}
+          >
+            <div className="signage hidden px-3 pb-1 text-[9px] font-semibold text-ink-3 lg:block">
+              {group.label}
+            </div>
+            {group.modules.map((id) => {
+              const mod = MODULE_CATALOG[id];
+              const isActive = id === activeModule;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSelectModule(id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`flex w-auto shrink-0 items-center gap-2.5 border-l-2 px-3 py-1.5 text-left text-[13px] transition-colors lg:w-full lg:shrink ${
+                    isActive
+                      ? 'border-l-accent bg-well font-semibold text-ink'
+                      : 'border-l-transparent font-medium text-ink-2 hover:bg-well/60 hover:text-ink'
+                  }`}
+                >
+                  <span
+                    className={`signage w-5 shrink-0 text-[9px] font-semibold ${
+                      isActive ? 'text-accent' : 'text-ink-3'
+                    }`}
+                  >
+                    {mod.num}
+                  </span>
+                  <span className="whitespace-nowrap">{mod.name}</span>
+                  <span
+                    className={`ml-auto hidden font-mono text-[11px] tabular-nums lg:inline ${
+                      counts[id] > 0 ? 'text-ink-2' : 'text-ink-3/45'
+                    }`}
+                  >
+                    {counts[id]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="mt-auto hidden flex-col gap-1 border-t border-line px-3 py-3 lg:flex">

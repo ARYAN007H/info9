@@ -34,6 +34,7 @@ import {
   NoticeBanner,
   Panel,
   PivotChip,
+  SegmentedTabs,
   SelectField,
   TextField,
   Well,
@@ -74,6 +75,7 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
   initialQuery,
   onPivot,
 }) => {
+  const [dossierTab, setDossierTab] = useState<'corporate' | 'records' | 'maritime'>('corporate');
   const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [isSearchingApi, setIsSearchingApi] = useState(false);
   const [isRunningTransform, setIsRunningTransform] = useState(false);
@@ -219,10 +221,37 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="signage text-[10px] font-semibold text-accent">
+              {MODULE_CATALOG.dossier.num}
+            </span>
+            <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+              Corporate, Legal &amp; Maritime Dossier
+            </h2>
+          </div>
+          <p className="mt-0.5 text-xs text-ink-3">
+            Trace GLEIF ownership chains, search SEC/courts/offshore leaks, or screen vessels by IMO/MMSI.
+          </p>
+        </div>
+        <SegmentedTabs
+          ariaLabel="Dossier source section"
+          active={dossierTab}
+          onChange={setDossierTab}
+          tabs={[
+            { id: 'corporate', label: `Corporate & LEI (${activeCase.entities.length})` },
+            { id: 'records', label: 'Filings, Courts & Leaks' },
+            { id: 'maritime', label: 'Maritime Vessels' },
+          ]}
+        />
+      </div>
+
+      {dossierTab === 'corporate' && (
+      <>
       <Panel
-        tag={MODULE_CATALOG.dossier.num}
-        title={MODULE_CATALOG.dossier.name}
-        description={`${MODULE_CATALOG.dossier.job} Sources: GLEIF LEI registry, Wikidata, OpenAlex.`}
+        title="Registry & Ownership Search"
+        description="GLEIF LEI, Wikidata & OpenAlex"
       >
         <form onSubmit={handleSearchSubmit} className="space-y-3">
           <div className="flex items-center gap-2">
@@ -621,13 +650,18 @@ export const DossierShellModule: React.FC<DossierShellModuleProps> = ({
           </Panel>
         </div>
       )}
+      </>
+      )}
 
-      <PublicRecordsMaritimePanel
-        onCommitLedger={(entry) => {
-          onAppendLedger(entry);
-          setStatusMessage(`Recorded "${entry.targetLabel}" to the evidence ledger.`);
-        }}
-      />
+      {(dossierTab === 'records' || dossierTab === 'maritime') && (
+        <PublicRecordsMaritimePanel
+          forcedMode={dossierTab === 'maritime' ? 'maritime' : 'records'}
+          onCommitLedger={(entry) => {
+            onAppendLedger(entry);
+            setStatusMessage(`Recorded "${entry.targetLabel}" to the evidence ledger.`);
+          }}
+        />
+      )}
     </div>
   );
 };

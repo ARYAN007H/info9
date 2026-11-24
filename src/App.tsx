@@ -37,6 +37,7 @@ import { AcousticDopplerModule } from './components/AcousticDopplerModule';
 import { WebHunterModule } from './components/WebHunterModule';
 import { TimelineHeatmapModule } from './components/TimelineHeatmapModule';
 import { CopilotVaultModule } from './components/CopilotVaultModule';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ReportBuilderModal } from './components/ReportBuilderModal';
 
@@ -718,6 +719,7 @@ export function App() {
             key={activeModule}
             className="panel-enter mx-auto max-w-[1500px] space-y-4 px-4 py-5 sm:px-5"
           >
+            <ErrorBoundary resetKey={activeModule}>
             {activeModule === 'geolocation' && (
               <GeolocationModule
                 activeCase={workspaceCase}
@@ -868,6 +870,7 @@ export function App() {
                 onPivotToModule={handlePivotToModule}
               />
             )}
+            </ErrorBoundary>
           </div>
         </main>
       </div>
@@ -915,7 +918,7 @@ export function App() {
       {toast && (
         <div
           role="status"
-          className="panel-enter fixed right-4 top-16 z-40 flex max-w-md items-center gap-3 rounded-md border border-line bg-panel px-3.5 py-2.5 text-xs text-ink shadow-xl"
+          className="panel-enter fixed bottom-14 right-4 z-40 flex max-w-md items-center gap-3 rounded-md border border-line-strong bg-panel px-3.5 py-2.5 text-xs text-ink shadow-xl"
         >
           <span
             aria-hidden="true"
